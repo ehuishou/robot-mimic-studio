@@ -1,4 +1,4 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { disposeObject } from '../robot/model';
 
@@ -16,6 +16,10 @@ export class StudioScene {
   private frames = 0;
   private lastSample = performance.now();
   private autoRotate = false;
+  private onUpdate?: (nowMs: number, deltaSeconds: number) => void;
+  private lastFrameTime = performance.now();
+
+  setUpdate(callback?: (nowMs: number, deltaSeconds: number) => void): void { this.onUpdate = callback; }
   private readonly onContextLost = (event: Event) => {
     event.preventDefault();
     this.onError('图形上下文已丢失，请重新加载页面。');
@@ -137,6 +141,10 @@ export class StudioScene {
   private animate = (): void => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.animate);
+    const nowMs = performance.now();
+    const dt = Math.max(0, (nowMs - this.lastFrameTime) / 1000);
+    this.lastFrameTime = nowMs;
+    if (!document.hidden) this.onUpdate?.(nowMs, dt);
     this.controls.autoRotate = this.autoRotate && !document.hidden;
     this.controls.update();
     if (!document.hidden) {
@@ -154,6 +162,7 @@ export class StudioScene {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.onUpdate = undefined;
     cancelAnimationFrame(this.frame);
     this.observer.disconnect();
     this.controls.dispose();

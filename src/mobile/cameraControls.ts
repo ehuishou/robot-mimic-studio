@@ -1,13 +1,13 @@
 import { applyCameraZoom, cameraZoom, normalizeZoom } from '../pose/camera';
 import type { CameraSelection } from '../pose/camera';
 
-export function createCameraControls(onSelectionChange: () => void) {
-  const facing = document.getElementById('camera-facing') as HTMLSelectElement;
-  const devices = document.getElementById('camera-device') as HTMLSelectElement;
-  const zoom = document.getElementById('camera-zoom') as HTMLInputElement;
-  const value = document.getElementById('zoom-value') as HTMLOutputElement;
-  const hint = document.getElementById('zoom-hint')!;
-  const detail = document.getElementById('camera-detail')!;
+export function createCameraControls(onSelectionChange: () => void, root: ParentNode = document) {
+  const facing = root.querySelector('#camera-facing') as HTMLSelectElement;
+  const devices = root.querySelector('#camera-device') as HTMLSelectElement;
+  const zoom = root.querySelector('#camera-zoom') as HTMLInputElement;
+  const value = root.querySelector('#zoom-value') as HTMLOutputElement;
+  const hint = root.querySelector('#zoom-hint')!;
+  const detail = root.querySelector('#camera-detail')!;
   const lifetime = new AbortController();
   const label = () => facing.value === 'user' ? '自动选择前置' : '自动选择后置';
   const format = (number: number) => `${Number(number.toFixed(2))}×`;

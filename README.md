@@ -1,13 +1,13 @@
 # Robot Studio · 机器人动作实验室
 
 基于 Vite + TypeScript + Three.js 的机器人展示与骨骼调试工作台。
-已实现第一阶段机器人工作台与第二阶段手机端 MediaPipe 姿态识别；动作映射和 WebSocket 尚未实现。
+已实现机器人工作台、手机端 MediaPipe 姿态识别与第三阶段双上臂动作映射。支持同页模拟输入和本机摄像头驱动；跨设备 WebSocket 尚未实现。
 
-展示地址：[打开 Robot Studio](https://121.199.30.133/) · [手机姿态识别](https://121.199.30.133/pose.html)
+展示地址：[打开 Robot Studio](https://121.199.30.133/) · [手机姿态识别](https://121.199.30.133/pose.html) · [机器人动作映射](https://121.199.30.133/mapping.html)
 
 GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（私有仓库）
 
-实际验收记录：[第一阶段](docs/verification-2026-10-23.md) · [第二阶段](docs/stage-02-verification.md)
+实际验收记录：[第一阶段](docs/verification-2026-10-23.md) · [第二阶段](docs/stage-02-verification.md) · [第三阶段](docs/stage-03-verification.md)
 
 ## 运行
 
@@ -156,7 +156,7 @@ localhost 的安全上下文例外只适用于访问设备本身，手机访问�
 默认请求 1280 × 720，界面显示设备实际提供的分辨率。授权后列出可用摄像头，选择镜头时先停止旧流再重新启动识别。若设备通过 `getCapabilities().zoom` 开放变焦，则按实际最小值、最大值及步长启用滑块，以 `applyConstraints` 调整摄像头，并显示 `getSettings().zoom` 返回的倍率。变焦请求串行处理，不进行 CSS 放大；失败后恢复已应用倍率。不支持或未返回实际倍率时提供提示。广角、长焦及倍率范围取决于手机与浏览器提供的能力，不承诺光学变焦、特定焦距或画质提升。
 
 模块位于 `src/mobile/`（页面控制、布局、样式）和 `src/pose/`（摄像头、推理、绘制、类型）。
-两个 HTML 入口分别构建，机器人页不会加载 MediaPipe 引擎。
+三个 HTML 入口分别构建，模型工作台不会加载 MediaPipe 引擎；映射页仅在主动启动摄像头时加载识别引擎。
 
 ```powershell
 npm run test:pose
@@ -169,3 +169,29 @@ npm run test:pose
 可选真实人体图片验证：将 Google 官方测试图 `https://storage.googleapis.com/mediapipe-assets/pose.jpg` 下载到 `artifacts/pose-fixture.jpg`，设置 `POSE_PERSON=1`；设置 `POSE_DURATION=300` 执行桌面五分钟采样。测试图不进入仓库或发布包。
 
 第二阶段实际检查和待验收项目见 [第二阶段验证记录](docs/stage-02-verification.md)。模拟视频与桌面运行结果不代表已完成真机摄像头、指示灯、温升或移动浏览器内存验收。
+
+## 第三阶段：机器人动作映射
+
+打开 `/mapping.html`，默认使用模拟姿态，不申请相机权限。选择“只抬左臂”“只抬右臂”“双臂外展”或“双臂前伸”检查动作；也可选低置信度、缺失点、异常坐标与向上限位场景。
+
+切换输入方式为“摄像头识别”，点击启动后使用本机视频推理驱动同页机器人。默认后摄；设备开放相应能力时可切换具体镜头和原生变焦。前摄只镜像预览，输入的解剖左右保持不变。无需 WebSocket，尚不支持一台手机发送动作到另一台电脑。
+
+暂停跟随会冻结当前旋转，重置会恢复模型初始位置、四元数和缩放并暂停；点击继续跟随后重新驱动。摄像头停止、切源或后台切换时会清理采集；后台后跟随保持暂停，需要手动继续。观察面板显示实际骨骼、世界坐标置信度、方向、目标/实际四元数及跟踪/保持/回中状态。绿色箭头表示输入，灰色表示实际臂向。
+
+当前内置模型绑定：11→13 对应 LeftUpperArm→LeftForearm，12→14 对应 RightUpperArm→RightForearm。前臂到手部的实际配置也已记录，默认禁用，本版只驱动上臂。世界坐标按 `(x,-y,-z)` 转入场景，父旋转参与求解，使用最小摆动、固定扭转约定、最大 160° 摆角和时间相关 SLERP；单侧无有效新观察超过 250ms 后平滑回中。不宣称恢复肩关节轴向扭转、精确关节角或完整人体动作。
+
+当前没有交付用 `robot.glb`，内置程序化骨架验证不算实际 GLB 验收。外部 GLB 的动作映射须附带 `public/models/robot.mapping.json`，缺失或不匹配时显示警告并保留模型浏览，不猜测名称。格式为 `{ "version": 1, "bindings": [...] }`；每项包括 `side`（left/right）、`segment`（upperArm/forearm）、`enabled`、`bonePath`、`endPath`、实际 `expectedBoneName` / `expectedEndName`、弧度 `maxSwingRadians` 和单位四元数 `axisCorrection`（xyzw）。
+
+`bonePath` / `endPath` 为从导入模型根节点逐层走过的 `children` 数组索引，不能从名字或临时 UUID 猜测；名称和父子关系也会核验。当前支持直接相连的肩肘链和正的均匀缩放变换；负缩放、非均匀缩放、剪切及不支持的链会被停用。上臂参考方向和初始旋转取自实际模型；配置中的前臂段目前不会启用，待增加肘关节专属求解后接入。
+
+新增模块：`src/retarget/`（适配、配置、模拟、求解、调试）、`src/mapping/`（页面）、`src/mobile/capturePanel.ts`（与阶段二共享的采集面板）。
+
+```powershell
+npm run test:retarget
+# 可选：沿用上文的官方人体测试图片，执行桌面真实模型驱动和 5 分钟采样
+$env:POSE_PERSON = '1'
+$env:MAPPING_DURATION = '300'
+npm run test:retarget
+```
+
+新增自动化结果输出到 `artifacts/retarget-browser-results.json`，截图为 `mapping-desktop.png`、`mapping-mobile.png` 和 `mapping-camera.png`。桌面模拟相机和合成 GLB 夹具均不能替代实际手机和实际交付 GLB 验收。
