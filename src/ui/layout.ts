@@ -1,11 +1,11 @@
-﻿import { icon } from './icons';
+import { icon } from './icons';
 
 export function renderLayout(container: HTMLElement): void {
   container.innerHTML = `
     <header class="topbar">
       <a class="brand" href="./" aria-label="Robot Studio 首页"><span class="brand-icon">${icon('robot')}</span><span>robot<span class="brand-light">studio</span><span class="brand-dot">.</span></span></a>
       <div class="header-divider"></div><span class="workspace-label">动作模仿实验室</span>
-      <div class="header-right"><span class="phase-badge"><span></span>阶段 01 · 模型工作台</span><span class="version">v0.1</span></div>
+      <div class="header-right"><span class="phase-badge"><span></span>阶段 01 · 模型工作台</span><a class="version" href="./pose.html" aria-label="打开手机姿态识别">姿态识别 ↗</a></div>
     </header>
     <main class="workspace">
       <section class="main-column">

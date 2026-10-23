@@ -8,3 +8,6 @@ artifacts/
 *.log
 *.tsbuildinfo
 .DS_Store
+
+public/mediapipe/wasm/
+public/mediapipe/models/

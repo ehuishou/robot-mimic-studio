@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew Robot Studio IP HTTPS certificate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/robot-studio-certbot/bin/certbot renew --non-interactive --cert-name robot-studio-ip --webroot -w /var/lib/robot-studio-acme
+ExecStartPost=/usr/bin/systemctl try-restart robot-studio.service
+TimeoutStartSec=300

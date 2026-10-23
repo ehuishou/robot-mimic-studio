@@ -8,10 +8,14 @@ Push-Location -LiteralPath $projectRoot
 try {
   npm.cmd run build
   if ($LASTEXITCODE -ne 0) { throw 'Production build failed' }
+  $commit = git rev-parse HEAD
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot determine release commit' }
+  $versionJson = @{ commit = $commit; builtAt = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json
+  [System.IO.File]::WriteAllText((Join-Path $projectRoot 'dist\version.json'), $versionJson, [System.Text.UTF8Encoding]::new($false))
   $release = Get-Date -Format 'yyyyMMdd-HHmmss'
   $bundle = Join-Path $projectRoot 'artifacts\robot-studio-release.tar.gz'
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $bundle) | Out-Null
-  tar -czf $bundle dist deploy/server.mjs deploy/robot-studio.service
+  tar -czf $bundle dist deploy
   if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
   scp -i $KeyPath $bundle "${Server}:/tmp/robot-studio-$release.tar.gz"
   if ($LASTEXITCODE -ne 0) { throw 'Upload failed' }

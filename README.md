@@ -1,9 +1,9 @@
 # Robot Studio · 机器人动作实验室
 
 基于 Vite + TypeScript + Three.js 的机器人展示与骨骼调试工作台。
-当前只实现第一阶段；MediaPipe、动作映射、WebSocket 尚未实现。
+已实现第一阶段机器人工作台与第二阶段手机端 MediaPipe 姿态识别；动作映射和 WebSocket 尚未实现。
 
-展示地址：[打开 Robot Studio](http://121.199.30.133/)
+展示地址：[打开 Robot Studio](https://121.199.30.133/) · [手机姿态识别](https://121.199.30.133/pose.html)
 
 GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（私有仓库）
 
@@ -15,6 +15,7 @@ GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-s
 
 ```powershell
 npm ci
+npm run prepare:pose
 npm run dev
 ```
 
@@ -92,8 +93,8 @@ GitHub Actions 在推送与 PR 时运行单元测试、类型检查、构建及�
 ## 服务器部署
 
 默认部署到 `121.199.30.133` 的 `/opt/robot-studio/releases/<版本时间>/`。
-`/opt/robot-studio/current` 指向当前发布，独立服务名为 `robot-studio`，监听 80 端口。
-服务器需要 Node.js 22+、systemd、tar、curl，80 端口应空闲且可访问。
+`/opt/robot-studio/current` 指向当前发布，独立服务名为 `robot-studio`，HTTP 监听 80，配置证书后同时在 443 提供 HTTPS；HTTP 请求跳转到 HTTPS，ACME 验证路径保留 HTTP。
+服务器需要 Node.js 22+、systemd、tar、curl；首次配置 HTTPS 还需要 Python 3、venv、pip。80 和 443 端口均须可公开访问。
 服务使用 systemd 动态用户和仅绑定端口的能力运行。
 SSH 私钥仅从本机路径读取，不会被打包或提交。
 
@@ -114,7 +115,7 @@ readlink -f /opt/robot-studio/current
 ```
 
 回滚时确认 `previous-release` 指向的旧版本，再将 `current` 软链接切回该版本并重启服务。
-后续手机摄像头阶段需要配置 HTTPS，目前 HTTP 展示页只运行三维模型。
+手机摄像头使用 HTTPS。首次启用时，将第二阶段部署完成后在服务器运行 `bash /opt/robot-studio/current/deploy/setup-https.sh`。脚本使用独立 Python 虚拟环境中的 Certbot 5.4.0 / acme 5.4.0，通过 HTTP webroot 为公网 IP 申请 shortlived 证书，安装 TLS 配置与每天两次的续期定时器。密钥留在服务器，由 systemd credentials 交给动态用户服务。续期成功后重启应用加载证书；正常发布复用证书与定时器。可用 `systemctl list-timers robot-studio-certbot.timer` 和 `journalctl -u robot-studio-certbot` 查看维护状态。
 
 ## 常见问题
 
@@ -131,7 +132,38 @@ readlink -f /opt/robot-studio/current
 ## 下一阶段前置条件
 
 1. 选定有使用授权且具备合适骨架的目标机器人 GLB，记录真实骨骼和初始姿势。
-2. 保留本阶段工作台，为手机姿态识别新增独立页面。
-3. 确定 MediaPipe 模型/WASM 来源、版本及部署方式，并为手机访问配置 HTTPS。
+2. 完成真实手机上的授权、停止摄像头及五分钟运行验收。
+3. 第二阶段已提供独立手机页及同源模型/WASM，后续保持资源版本一致。
 4. 在接入动作映射前统一图像/世界坐标、左右方向、置信度与关节旋转约定。
 5. 用模拟关键点先验证目标模型骨骼，再实现后续 WebSocket 通信。
+
+## 手机端姿态识别（阶段 02）
+
+本地运行先执行 `npm run prepare:pose`，再打开 `http://localhost:5173/pose.html`；生产构建自动准备资源。
+手机访问公网 HTTPS 地址，点击“启动摄像头”并授权，前置摄像头优先，浏览器可退回可用摄像头。
+localhost 的安全上下文例外只适用于访问设备本身，手机访问电脑局域网 HTTP 地址不能据此获得摄像头权限。
+
+识别使用锁定的 `@mediapipe/tasks-vision` 1.1.1 和官方 Lite 模型，单人、VIDEO、CPU 模式，不生成分割掩码。
+模型为 5,777,746 字节，资源脚本校验 SHA-256，WASM/loader 来自同一安装包。来源和路径见 [资源说明](public/mediapipe/README.md)。
+媒体图像在本机处理；手机页 CSP 将联网目标限制为本站，项目不上传图像、不录制、不添加遥测。
+
+视频与骨架一起镜像显示，坐标数据保持原始左右约定；归一化图像坐标用于绘制，worldLandmarks 单独保存，不混用。
+界面显示有效点数 / 返回点数及实际完成的推理 FPS。可见度阈值为 0.5，低置信度点及相关连线不绘制。
+推理最多约 20 次/秒，使用视频帧回调（或 RAF 降级）并跳过重复帧。
+停止、离开页面或切入后台会取消循环、停止所有 tracks、关闭推理实例并清空视频；返回后手动重新启动。
+启动期间也可停止；延迟返回的摄像头和识别实例会释放。
+
+模块位于 `src/mobile/`（页面控制、布局、样式）和 `src/pose/`（摄像头、推理、绘制、类型）。
+两个 HTML 入口分别构建，机器人页不会加载 MediaPipe 引擎。
+
+```powershell
+npm run test:pose
+# 使用已安装的 Edge：
+$env:BROWSER_CHANNEL = 'msedge'
+npm run test:pose
+```
+
+自动化使用模拟摄像头和真实 MediaPipe/WASM，覆盖权限拒绝、模型/WASM 失败、延迟授权取消、无人、停止/重启、退出和窄屏。
+可选真实人体图片验证：将 Google 官方测试图 `https://storage.googleapis.com/mediapipe-assets/pose.jpg` 下载到 `artifacts/pose-fixture.jpg`，设置 `POSE_PERSON=1`；设置 `POSE_DURATION=300` 执行桌面五分钟采样。测试图不进入仓库或发布包。
+
+第二阶段实际检查和待验收项目见 [第二阶段验证记录](docs/stage-02-verification.md)。模拟视频与桌面运行结果不代表已完成真机摄像头、指示灯、温升或移动浏览器内存验收。
