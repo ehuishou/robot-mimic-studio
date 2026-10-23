@@ -7,7 +7,7 @@
 
 GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（私有仓库）
 
-实际验收记录：[2026-10-23](docs/verification-2026-10-23.md)
+实际验收记录：[第一阶段](docs/verification-2026-10-23.md) · [第二阶段](docs/stage-02-verification.md)
 
 ## 运行
 

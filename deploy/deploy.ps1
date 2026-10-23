@@ -32,7 +32,7 @@ try {
     'systemctl daemon-reload',
     'systemctl enable --now robot-studio',
     'systemctl restart robot-studio',
-    'curl --fail --retry 5 --retry-delay 1 --retry-connrefused -s http://127.0.0.1/ > /dev/null',
+    'curl --fail --location --retry 5 --retry-delay 1 --retry-connrefused -s http://127.0.0.1/ > /dev/null',
     'systemctl is-active robot-studio'
   )
   $remote = ($remoteLines -join "`n").Replace('RELEASE_ID', $release)

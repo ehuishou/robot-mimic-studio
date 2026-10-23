@@ -40,7 +40,22 @@ WASM 及 loader 来自同版本 npm 包，构建前复制并生成校验清单�
 
 ## 部署与版本管理
 
-应用及 HTTPS/证书续期部署正在进行，公网检查与 GitHub CI 结果将据实际执行补充。
+实现提交：`66eba98dfbe5c4323f5bd734e078096d373d8196`，已同步至 GitHub 私有仓库 `ehuishou/robot-mimic-studio` 的 `main` 分支。常规 Git push 网络超时后，通过 GitHub Git Data API 创建相同 tree / commit 并核对 SHA，未强制覆盖分支。
+
+公网入口：`https://121.199.30.133/pose.html`；机器人入口：`https://121.199.30.133/`。服务器使用 `/opt/robot-studio/current` 指向版本目录，`/version.json` 提供实际部署提交与构建时间。
+
+已实际验证：
+
+- 使用公网 HTTPS 地址运行 Edge 第二阶段全部浏览器场景，以及第一阶段全部回归场景，均通过；没有跳过证书校验。
+- 公网真实模型 + 官方测试图生成的模拟视频返回 33 个关键点；权限拒绝、加载失败、停止/重启、离开清理及窄屏验证通过。
+- HTTP 返回 308 并保留路径/查询参数，跳转到 HTTPS；页面返回 200，摄像头 Permissions-Policy 正常。
+- 公网模型大小和 SHA-256 与上文一致；WASM 返回 `application/wasm`，资源清单版本为 1.1.1。
+- Let's Encrypt 为 IP `121.199.30.133` 签发受信任证书，检查时有效期为 2026-10-23 13:26:33 UTC 至 2026-10-30 05:26:32 UTC。浏览器与 Node.js 均通过默认证书校验。
+- 独立 Certbot / acme 5.4.0 环境已安装；`robot-studio-certbot.timer` 已启用，每天两次检查续期。
+- `certbot renew --dry-run` 成功；实际启动 `robot-studio-certbot.service` 结果为 success / exit 0，随后应用重启并通过 HTTPS 健康检查。
+- 证书私钥保留在服务器 `/etc/letsencrypt`，通过 systemd credentials 提供给应用，不纳入源码、发布包或浏览器资源。
+
+本机公网校验原始记录位于忽略文件 `artifacts/production-verification.json`。GitHub CI 已全部通过（单元测试、生产构建、Linux Chromium 的第一/第二阶段浏览器检查）；对应实现提交的运行：`https://github.com/ehuishou/robot-mimic-studio/actions/runs/39969219642`。
 
 ## 尚需真实手机验收
 
