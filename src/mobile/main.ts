@@ -1,5 +1,6 @@
 import './style.css';
 import { renderMobileLayout } from './layout';
+import { createCameraControls } from './cameraControls';
 import { attachCamera, cameraError, requestCamera, stopStream } from '../pose/camera';
 import { drawPose } from '../pose/drawPose';
 import { summarizePose } from '../pose/poseTypes';
@@ -16,6 +17,11 @@ const lifetime = new AbortController();
 interface Session { abort: AbortController; stream?: MediaStream; runner?: PoseRunner; cancelFrame?: () => void }
 let active: Session | undefined;
 let disposed = false;
+const cameraControls = createCameraControls(() => {
+  if (!active || disposed) return;
+  stopCapture('正在切换摄像头…');
+  void startCapture();
+});
 function clearMetrics(): void {
   el('pose-fps').textContent = '—'; el('pose-visible').textContent = '0'; el('pose-count').textContent = '0';
   canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
@@ -27,7 +33,7 @@ function stopCapture(message = '摄像头已停止，画面不会被保存。'):
   if (session?.stream) stopStream(session.stream);
   try { session?.runner?.close(); } catch { /* Tracks and callbacks are already stopped. */ }
   video.pause(); video.srcObject = null;
-  clearMetrics();
+  clearMetrics(); cameraControls.reset();
   el('standby').hidden = false; el('camera-light').classList.remove('active');
   el('pose-status').textContent = '尚未启动';
   el('load-status').textContent = message;
@@ -76,7 +82,7 @@ async function startCapture(): Promise<void> {
   const update = (text: string) => { if (active === session) { el('load-status').textContent = text; el('pose-status').textContent = '启动中'; } };
   try {
     update('请允许摄像头权限…');
-    const stream = await requestCamera(signal);
+    const stream = await requestCamera(signal, cameraControls.selection());
     session.stream = stream;
     signal.throwIfAborted();
     stream.getVideoTracks().forEach((track) => track.addEventListener('ended', () => { if (active === session) stopCapture('摄像头连接已断开，请重新启动。'); }, { signal }));
@@ -84,7 +90,7 @@ async function startCapture(): Promise<void> {
     el('standby').hidden = true; el('camera-light').classList.add('active');
     const settings = stream.getVideoTracks()[0]?.getSettings();
     // A rear/external camera should not get a misleading selfie mirror.
-    const mirrored = settings?.facingMode !== 'environment';
+    const mirrored = settings?.facingMode === 'user';
     document.querySelector<HTMLElement>('.camera-layer')!.style.transform = mirrored ? 'scaleX(-1)' : 'none';
     el('video-stage').style.aspectRatio = `${video.videoWidth || 640} / ${video.videoHeight || 480}`;
     const syncVideoSize = () => {
@@ -92,8 +98,9 @@ async function startCapture(): Promise<void> {
     };
     video.addEventListener('resize', syncVideoSize, { signal });
     syncVideoSize();
+    cameraControls.connect(stream, signal);
     const labels = document.querySelectorAll('.stage-label span');
-    labels[0]!.textContent = mirrored ? 'FRONT CAMERA' : 'CAMERA'; labels[1]!.textContent = mirrored ? '单人 · 镜像预览' : '单人 · 原始预览';
+    labels[0]!.textContent = mirrored ? 'FRONT CAMERA' : settings?.facingMode === 'environment' ? 'REAR CAMERA' : 'CAMERA'; labels[1]!.textContent = mirrored ? '单人 · 镜像预览' : '单人 · 原始预览';
     const { createPoseRunner } = await import('../pose/pose');
     signal.throwIfAborted();
     const runner = await createPoseRunner(signal, update);
@@ -112,6 +119,6 @@ start.addEventListener('click', () => { void startCapture(); }, { signal: lifeti
 stop.addEventListener('click', () => stopCapture(), { signal: lifetime.signal });
 document.addEventListener('visibilitychange', () => { if (document.hidden && active) stopCapture('页面进入后台，摄像头已关闭。返回后可重新启动。'); }, { signal: lifetime.signal });
 window.addEventListener('pagehide', () => stopCapture(), { signal: lifetime.signal });
-function dispose(): void { disposed = true; stopCapture(); lifetime.abort(); }
+function dispose(): void { disposed = true; stopCapture(); lifetime.abort(); cameraControls.dispose(); }
 window.addEventListener('pagehide', (event) => { if (!event.persisted) dispose(); }, { signal: lifetime.signal });
 if (import.meta.hot) import.meta.hot.dispose(dispose);

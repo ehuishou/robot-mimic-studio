@@ -1,12 +1,38 @@
 export function stopStream(stream: MediaStream): void {
   stream.getTracks().forEach((track) => track.stop());
 }
+export interface CameraSelection { facing?: 'user' | 'environment'; deviceId?: string }
+export interface ZoomRange { min: number; max: number; step: number; value: number }
+type CameraSettings = MediaTrackSettings & { zoom?: number };
+export function cameraZoom(track: MediaStreamTrack): ZoomRange | undefined {
+  try {
+    const range = (track.getCapabilities?.() as MediaTrackCapabilities & { zoom?: { min?: number; max?: number; step?: number } })?.zoom;
+    if (!range || !Number.isFinite(range.min) || !Number.isFinite(range.max) || range.min! <= 0 || range.max! <= range.min!) return;
+    const min = range.min!, max = range.max!;
+    const step = Number.isFinite(range.step) && range.step! > 0 ? range.step! : 0;
+    const current = (track.getSettings() as CameraSettings).zoom;
+    if (!Number.isFinite(current)) return;
+    return { min, max, step, value: Math.min(max, Math.max(min, current!)) };
+  } catch { return; }
+}
+export function normalizeZoom(value: number, range: ZoomRange): number {
+  const bounded = Math.min(range.max, Math.max(range.min, Number.isFinite(value) ? value : range.value));
+  return Math.min(range.max, Math.max(range.min, range.step ? Number((range.min + Math.round((bounded - range.min) / range.step) * range.step).toFixed(8)) : bounded));
+}
+export async function applyCameraZoom(track: MediaStreamTrack, value: number): Promise<number | undefined> {
+  // Zoom is an Image Capture extension and is not present in every lib.dom version.
+  await track.applyConstraints({ advanced: [{ zoom: value } as MediaTrackConstraintSet] });
+  const actual = (track.getSettings() as CameraSettings).zoom;
+  return Number.isFinite(actual) ? actual : undefined;
+}
 export async function requestCamera(
   signal: AbortSignal,
+  selection: CameraSelection = {},
   acquire: (constraints: MediaStreamConstraints) => Promise<MediaStream> = (constraints) => navigator.mediaDevices.getUserMedia(constraints),
 ): Promise<MediaStream> {
   signal.throwIfAborted();
-  const stream = await acquire({ audio: false, video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } } });
+  const source = selection.deviceId ? { deviceId: { exact: selection.deviceId } } : { facingMode: { ideal: selection.facing || 'environment' } };
+  const stream = await acquire({ audio: false, video: { ...source, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } } });
   if (signal.aborted) { stopStream(stream); signal.throwIfAborted(); }
   return stream;
 }

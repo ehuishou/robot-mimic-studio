@@ -13,7 +13,7 @@ async function setup(mode = 'blank', delay = 0) {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(({ mode, delay, image }) => {
     window.__streams = [];
-    window.__created = 0;
+    window.__created = 0; window.__constraints = []; window.__zoomCalls = []; window.__zoomInFlight = 0; window.__maxZoomInFlight = 0;
     window.__videoPending = new Set();
     const nativeRequest = HTMLVideoElement.prototype.requestVideoFrameCallback;
     const nativeCancel = HTMLVideoElement.prototype.cancelVideoFrameCallback;
@@ -25,7 +25,11 @@ async function setup(mode = 'blank', delay = 0) {
       };
       HTMLVideoElement.prototype.cancelVideoFrameCallback = function (id) { window.__videoPending.delete(id); return nativeCancel.call(this, id); };
     }
-    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', { value: async () => [
+      { kind: 'videoinput', deviceId: 'rear-wide', label: '后置广角' }, { kind: 'videoinput', deviceId: 'rear-tele', label: '后置长焦' }, { kind: 'videoinput', deviceId: 'front', label: '前置摄像头' },
+    ] });
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async (constraints) => {
+      window.__constraints.push(constraints);
       if (mode === 'denied') throw new DOMException('Test denied', 'NotAllowedError');
       if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 480;
@@ -34,6 +38,21 @@ async function setup(mode = 'blank', delay = 0) {
       if (image) { img.src = image; await img.decode(); }
       let timer;
       const stream = canvas.captureStream(15);
+      const track = stream.getVideoTracks()[0];
+      const deviceId = constraints.video.deviceId?.exact || (constraints.video.facingMode?.ideal === 'user' ? 'front' : 'rear-wide');
+      let zoom = 1;
+      Object.defineProperty(track, 'getSettings', { value: () => ({ facingMode: deviceId === 'front' ? 'user' : 'environment', deviceId, width: 1280, height: 720, zoom }) });
+      Object.defineProperty(track, 'getCapabilities', { value: () => mode === 'no-zoom' ? {} : { zoom: { min: 0.5, max: 4, step: 0.1 } } });
+      Object.defineProperty(track, 'applyConstraints', { value: async (request) => {
+        const target = request.advanced[0].zoom;
+        window.__zoomCalls.push(target); window.__zoomInFlight++; window.__maxZoomInFlight = Math.max(window.__maxZoomInFlight, window.__zoomInFlight);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          if (track.readyState === 'ended') throw new DOMException('Stopped', 'InvalidStateError');
+          if (mode === 'zoom-failure' && target > 2) throw new DOMException('Rejected', 'OverconstrainedError');
+          zoom = target;
+        } finally { window.__zoomInFlight--; }
+      } });
       const paint = () => {
         if (!stream.getTracks().some((track) => track.readyState === 'live')) { clearInterval(timer); return; }
         ctx.fillStyle = '#f4f4f4'; ctx.fillRect(0, 0, 640, 480);
@@ -54,6 +73,7 @@ const stopped = async (page) => {
   assert.equal(await page.locator('#stop-camera').isDisabled(), true);
   assert.equal(await page.locator('#start-camera').isEnabled(), true);
   assert.equal(await page.locator('#pose-count').textContent(), '0');
+  assert.equal(await page.locator('#camera-zoom').isDisabled(), true);
   assert.equal(await page.evaluate(() => window.__videoPending.size), 0);
   assert.equal(await page.evaluate(() => document.getElementById('camera').srcObject === null), true);
 };
@@ -104,6 +124,64 @@ try {
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
     await stopped(page); assert.deepEqual(external, []);
     await context.close(); report.scenarios.push('real WASM/model on blank stream: empty state, stop/restart and pagehide cleanup');
+  }
+  {
+    const { page, context } = await setup();
+    await page.locator('#start-camera').click();
+    await page.waitForFunction(() => Number(document.getElementById('pose-fps').textContent) > 0, undefined, { timeout: 90000 });
+    assert.deepEqual(await page.evaluate(() => window.__constraints[0].video.facingMode), { ideal: 'environment' });
+    assert.equal(await page.locator('.camera-layer').evaluate((node) => node.style.transform), 'none');
+    assert.equal(await page.locator('#camera-zoom').isEnabled(), true);
+    assert.match(await page.locator('#camera-detail').textContent(), /1280.*720/);
+    await page.locator('#camera-zoom').evaluate((node) => {
+      for (const v of ['1.5', '2', '2.5']) { node.value = v; node.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    await page.waitForFunction(() => document.getElementById('zoom-value').textContent === '2.5×');
+    assert.equal(await page.evaluate(() => window.__maxZoomInFlight), 1);
+    assert.equal(await page.evaluate(() => window.__streams[0].getVideoTracks()[0].getSettings().zoom), 2.5);
+    await page.locator('#camera-facing').selectOption('user');
+    await page.waitForFunction(() => window.__created === 2 && Number(document.getElementById('pose-fps').textContent) > 0, undefined, { timeout: 90000 });
+    assert.equal(await page.evaluate(() => window.__streams[0].getTracks().every((track) => track.readyState === 'ended')), true);
+    assert.equal(await page.locator('.camera-layer').evaluate((node) => node.style.transform), 'scaleX(-1)');
+    await page.locator('#camera-device').selectOption('rear-tele');
+    await page.waitForFunction(() => window.__created === 3 && Number(document.getElementById('pose-fps').textContent) > 0, undefined, { timeout: 90000 });
+    assert.equal(await page.evaluate(() => window.__constraints[2].video.deviceId.exact), 'rear-tele');
+    assert.equal(await page.locator('#camera-facing').inputValue(), 'environment');
+    assert.equal(await page.locator('.camera-layer').evaluate((node) => node.style.transform), 'none');
+    assert.equal(await page.evaluate(() => window.__streams.filter((stream) => stream.getTracks().some((track) => track.readyState === 'live')).length), 1);
+    await page.locator('#camera-zoom').evaluate((node) => { node.value = '3'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.locator('#stop-camera').click(); await stopped(page);
+    await page.waitForTimeout(250); await stopped(page);
+    assert.equal(await page.locator('#zoom-value').textContent(), '—');
+    await context.close(); report.scenarios.push('rear HD default, native zoom serialized, front/rear lens switching releases old streams, stop during zoom');
+  }
+  {
+    const { page, context } = await setup('blank', 500);
+    await page.locator('#start-camera').click();
+    await page.locator('#camera-facing').selectOption('user');
+    await page.waitForFunction(() => window.__created === 2 && Number(document.getElementById('pose-fps').textContent) > 0, undefined, { timeout: 90000 });
+    assert.equal(await page.evaluate(() => window.__streams.filter((stream) => stream.getTracks().some((track) => track.readyState === 'live')).length), 1);
+    assert.equal(await page.evaluate(() => window.__streams[0].getTracks().every((track) => track.readyState === 'ended')), true);
+    assert.equal(await page.locator('.camera-layer').evaluate((node) => node.style.transform), 'scaleX(-1)');
+    await page.locator('#stop-camera').click(); await stopped(page); await context.close();
+    report.scenarios.push('switch while camera authorization pending: only latest stream remains active');
+  }
+  for (const mode of ['no-zoom', 'zoom-failure']) {
+    const { page, context } = await setup(mode);
+    await page.locator('#start-camera').click();
+    await page.waitForFunction(() => Number(document.getElementById('pose-fps').textContent) > 0, undefined, { timeout: 90000 });
+    if (mode === 'no-zoom') {
+      assert.equal(await page.locator('#camera-zoom').isDisabled(), true);
+      assert.match(await page.locator('#zoom-hint').textContent(), /未开放变焦/);
+    } else {
+      await page.locator('#camera-zoom').evaluate((node) => { node.value = '3'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+      await page.waitForFunction(() => document.getElementById('zoom-hint').textContent.includes('未成功'));
+      assert.equal(await page.locator('#camera-zoom').inputValue(), '1');
+      assert.equal(await page.locator('#zoom-value').textContent(), '1×');
+    }
+    assert.equal(await page.locator('#stop-camera').isEnabled(), true);
+    await page.locator('#stop-camera').click(); await stopped(page); await context.close();
+    report.scenarios.push(mode + ': readable state, inference remains active and stops cleanly');
   }
   if (process.env.POSE_PERSON === '1') {
     const { page, context, external } = await setup('person');
