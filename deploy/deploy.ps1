@@ -32,7 +32,11 @@ try {
     'systemctl is-active robot-studio'
   )
   $remote = ($remoteLines -join "`n").Replace('RELEASE_ID', $release)
-  $remote | ssh -i $KeyPath $Server 'tr -d "\r" | bash -s'
+  $remoteScript = Join-Path $projectRoot "artifacts\robot-studio-deploy-$release.sh"
+  [System.IO.File]::WriteAllText($remoteScript, $remote + "`n", [System.Text.UTF8Encoding]::new($false))
+  scp -i $KeyPath $remoteScript "${Server}:/tmp/robot-studio-deploy-$release.sh"
+  if ($LASTEXITCODE -ne 0) { throw 'Remote script upload failed' }
+  ssh -i $KeyPath $Server "bash /tmp/robot-studio-deploy-$release.sh"
   if ($LASTEXITCODE -ne 0) { throw 'Remote deployment failed; inspect systemctl status robot-studio' }
   Write-Output "Deployed release $release"
 } finally { Pop-Location }

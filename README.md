@@ -1,7 +1,13 @@
-﻿# Robot Studio · 机器人动作实验室
+# Robot Studio · 机器人动作实验室
 
 基于 Vite + TypeScript + Three.js 的机器人展示与骨骼调试工作台。
 当前只实现第一阶段；MediaPipe、动作映射、WebSocket 尚未实现。
+
+展示地址：[打开 Robot Studio](http://121.199.30.133/)
+
+GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（私有仓库）
+
+实际验收记录：[2026-10-23](docs/verification-2026-10-23.md)
 
 ## 运行
 
@@ -70,7 +76,7 @@ npm run test:browser
 浏览器脚本会验证：模型缺失时的备用模型、关节调整和重置、骨骼搜索、工具按钮、
 390px 窄屏、有真实 skin/joints 结构的合成 GLB、无骨骼 GLB、损坏文件与 WebGL 上下文丢失。
 合成 GLB 仅为自动化夹具，不代表已验证任何第三方机器人资产。
-截图和结果写入 `artifacts/`（不进入版本库）。
+截图和结果写入 `artifacts/`（不进入版本库）。本机已有 Edge 时，可设置 `BROWSER_CHANNEL=msedge` 使用 Edge 执行同一验证。
 
 可以改用生产构建验证：
 
