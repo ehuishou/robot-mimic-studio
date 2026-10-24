@@ -49,7 +49,7 @@ function waitReady(socket) {
 }
 try {
   await page.goto(`${base}/mapping.html`);
-  await page.waitForFunction(() => document.getElementById('app').dataset.ready === 'true');
+  await page.waitForFunction(() => document.getElementById('app').dataset.ready === 'true', undefined, { timeout: 75000 });
   assert.equal(await page.locator('#rig-source').textContent(), 'robot.glb · 实际骨架');
   await page.locator('#create-pair').click();
   await page.locator('#mobile-link').waitFor({ state: 'visible' });

@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import { createGzip } from 'node:zlib';
+import { pipeline } from 'node:stream';
 import { createServer as createSecureServer } from 'node:https';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
@@ -17,11 +19,21 @@ function sendFile(request, response, path, cache = 'no-cache') {
   try {
     const stat = statSync(path);
     if (!stat.isFile()) throw new Error('Not a file');
-    response.writeHead(200, { 'Content-Type': types[extname(path)] || 'application/octet-stream', 'Content-Length': stat.size, 'Cache-Control': cache });
+    const acceptsGzip = String(request.headers['accept-encoding'] || '').split(',').some(value => {
+      const [encoding, ...parameters] = value.trim().split(';');
+      const quality = parameters.find(parameter => parameter.trim().startsWith('q='));
+      return encoding === 'gzip' && (!quality || Number(quality.trim().slice(2)) > 0);
+    });
+    const compressed = stat.size >= 1024 && acceptsGzip && ['.html', '.js', '.css', '.json', '.svg', '.glb', '.wasm', '.task'].includes(extname(path));
+    response.writeHead(200, {
+      'Content-Type': types[extname(path)] || 'application/octet-stream', 'Cache-Control': cache,
+      Vary: 'Accept-Encoding', ...(compressed ? { 'Content-Encoding': 'gzip' } : { 'Content-Length': stat.size }),
+    });
     if (request.method === 'HEAD') { response.end(); return; }
     const stream = createReadStream(path);
-    stream.on('error', () => response.destroy());
-    stream.pipe(response);
+    const finish = error => { if (error) response.destroy(); };
+    if (compressed) pipeline(stream, createGzip(), response, finish);
+    else pipeline(stream, response, finish);
   } catch { response.writeHead(404); response.end('Not found'); }
 }
 function handler(request, response) {

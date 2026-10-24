@@ -65,7 +65,7 @@ export async function loadRobot(signal: AbortSignal): Promise<RobotModel> {
   let source: RobotModel['source'] = 'glb';
   let notice = '';
   try {
-    const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]) });
+    const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]) });
     if (!response.ok) throw new Error(response.status === 404 ? '未找到 robot.glb' : `模型请求失败（HTTP ${response.status}）`);
     const data = await response.arrayBuffer();
     if (data.byteLength < 12 || new DataView(data).getUint32(0, true) !== 0x46546c67) {
