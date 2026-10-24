@@ -165,4 +165,7 @@ Vite `/api` 与 `/ws` 代理将 Host 和 Origin 改写至本机 relay；本轮�
 - 新增协议单测覆盖额外字段过滤、空/不完整检测、缺省可见度和非法坐标。
 - 最终验证：`npm.cmd run typecheck` 通过；`npm.cmd test` 33/33 通过；`npm.cmd run build` 通过（存在既有的大 chunk 提示）。当前受限运行环境中 Node 的 `os.userInfo()` 初始化报错，测试通过一次性临时 shim 重跑；shim 未加入仓库。
 - 两页本地端到端回归通过：先无人体运行 2 秒，配对持续在线；再注入测试人体图，手机产生 33 个关键点，电脑两侧手臂进入 `tracking`，页面错误为 0。该结果是桌面浏览器模拟摄像头，不是手机真机验收。
-- 真实手机后摄 + 真人动作、公网修复版本复测，以及 GitHub 同步/部署，均须后续按实际执行结果记录；不得用本地模拟替代。
+- 修复提交：`9d444dcd394ba8b2c3ff01ee1a7c469460d6c77b`。GitHub `origin/main` 已同步至同一提交；Actions run `40071840435` 最终 `success`，包含 Node 测试、生产构建和 Chromium 页面验收。
+- 公网部署：release `20261024-144621`；systemd `robot-studio` 为 `active`。HTTPS `/`、`/pose.html`、`/mapping.html` 返回 200；`/version.json` 与修复提交一致，默认证书校验通过。
+- 公网 WSS 双角色复验通过：创建配对并连接 mobile/viewer；空姿态间隔 2 秒期间 mobile socket 保持打开，随后 33 点姿态帧成功转发。
+- 仍待用户使用真实手机后摄及真人动作复验；桌面模拟/公网协议探针不能替代真机确认。
