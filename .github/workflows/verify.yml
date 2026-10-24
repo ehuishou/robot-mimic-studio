@@ -15,6 +15,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Install isolated relay runtime dependencies
+        run: npm ci --omit=dev --prefix deploy/runtime
       - run: npx playwright install --with-deps chromium
       - name: Verify production page in Chromium
         run: |

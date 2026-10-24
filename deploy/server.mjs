@@ -3,6 +3,7 @@ import { createServer as createSecureServer } from 'node:https';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { attachRelay } from './runtime/relay.mjs';
 
 const root = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const acmeRoot = resolve(process.env.ACME_ROOT || '/var/lib/robot-studio-acme');
@@ -24,6 +25,7 @@ function sendFile(request, response, path, cache = 'no-cache') {
   } catch { response.writeHead(404); response.end('Not found'); }
 }
 function handler(request, response) {
+  if (response.writableEnded) return;
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
@@ -45,6 +47,7 @@ function handler(request, response) {
 }
 const servers = [createServer(handler)];
 if (tls) servers.push(createSecureServer(tls, handler));
+attachRelay(servers);
 for (const [index, server] of servers.entries()) {
   server.requestTimeout = 15000;
   server.headersTimeout = 10000;
