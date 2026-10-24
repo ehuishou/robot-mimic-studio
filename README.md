@@ -1,13 +1,13 @@
 # Robot Studio · 机器人动作实验室
 
 基于 Vite + TypeScript + Three.js 的机器人展示与骨骼调试工作台。
-已实现机器人工作台、手机端 MediaPipe 姿态识别与第三阶段双上臂动作映射。支持同页模拟输入和本机摄像头驱动；跨设备 WebSocket 尚未实现。
+已实现机器人工作台、手机端 MediaPipe 姿态识别、双上臂动作映射和跨设备 WebSocket 实时姿态转发。摄像头画面只在手机本地处理，中继只转发关键点数据。
 
 展示地址：[打开 Robot Studio](https://121.199.30.133/) · [手机姿态识别](https://121.199.30.133/pose.html) · [机器人动作映射](https://121.199.30.133/mapping.html)
 
 GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（私有仓库）
 
-实际验收记录：[第一阶段](docs/verification-2026-10-23.md) · [第二阶段](docs/stage-02-verification.md) · [第三阶段](docs/stage-03-verification.md)
+实际验收记录：[第一阶段](docs/verification-2026-10-23.md) · [第二阶段](docs/stage-02-verification.md) · [第三阶段](docs/stage-03-verification.md) · [第五阶段](docs/stage-05-plan.md)
 
 ## 运行
 
@@ -174,7 +174,7 @@ npm run test:pose
 
 打开 `/mapping.html`，默认使用模拟姿态，不申请相机权限。选择“只抬左臂”“只抬右臂”“双臂外展”或“双臂前伸”检查动作；也可选低置信度、缺失点、异常坐标与向上限位场景。
 
-切换输入方式为“摄像头识别”，点击启动后使用本机视频推理驱动同页机器人。默认后摄；设备开放相应能力时可切换具体镜头和原生变焦。前摄只镜像预览，输入的解剖左右保持不变。无需 WebSocket，尚不支持一台手机发送动作到另一台电脑。
+切换输入方式为“摄像头识别”，点击启动后使用本机视频推理驱动同页机器人。默认后摄；设备开放相应能力时可切换具体镜头和原生变焦。前摄只镜像预览，输入的解剖左右保持不变。跨设备方式见下方第五阶段说明。
 
 暂停跟随会冻结当前旋转，重置会恢复模型初始位置、四元数和缩放并暂停；点击继续跟随后重新驱动。摄像头停止、切源或后台切换时会清理采集；后台后跟随保持暂停，需要手动继续。观察面板显示实际骨骼、世界坐标置信度、方向、目标/实际四元数及跟踪/保持/回中状态。绿色箭头表示输入，灰色表示实际臂向。
 
@@ -195,3 +195,20 @@ npm run test:retarget
 ```
 
 新增自动化结果输出到 `artifacts/retarget-browser-results.json`，截图为 `mapping-desktop.png`、`mapping-mobile.png` 和 `mapping-camera.png`。桌面模拟相机和合成 GLB 夹具均不能替代实际手机和实际交付 GLB 验收。
+
+## 第五阶段：跨设备集成
+
+本地联调需先构建一次以生成静态资源与 relay bundle，再在两个终端分别启动生产入口和 Vite：
+
+```powershell
+npm run build
+node deploy/server.mjs
+# 另一个终端
+npm run dev
+```
+
+开发页面默认是 `http://localhost:5173`，中继端口为 `8082`；Vite 将 `/api` 和 `/ws` 代理到本机中继。先在电脑打开 `/mapping.html`，选择“手机 WebSocket”并创建配对，再用手机打开页面生成的链接。手机摄像头要求 HTTPS 安全上下文；本地 HTTP 联调可测试协议和模拟消息，但不能替代真机摄像头验收。
+
+生产部署通过同源 HTTPS/WSS 提供页面、配对 API 和 WebSocket，不开放单独的公网 WS 端口。断线会清除电脑端旧姿态并有限重连；相机停止或手机离线会结束 capture session。配对凭据只放在手机链接片段中，页面读取后立即从地址栏移除。
+
+`npm test` 覆盖 relay 鉴权与房间隔离、capture/session、断线状态、心跳、姿态校验和 RemotePoseBuffer 时序；`npm run test:browser`、`npm run test:pose`、`npm run test:retarget` 分别覆盖工作台、姿态采集及映射页面。自动化不等价于真实手机后置摄像头、真实人体跨设备动作、实际交付 GLB、10 分钟真机稳定性或端到端 P95 验收；这些项目须按 [第五阶段需求与验收文档](05_端到端集成与验收.md) 记录设备、网络、时长和测量证据。

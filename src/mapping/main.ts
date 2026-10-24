@@ -14,7 +14,8 @@ import type { Simulation } from '../retarget/simulatedPose';
 import type { RetargetFrame } from '../retarget/types';
 import { renderDebug } from '../retarget/debugPanel';
 import { createPoseClient, type ConnectionState } from '../communication/client';
-import type { HelloMessage, PoseMessage } from '../communication/protocol';
+import { PROTOCOL_VERSION, type HelloMessage, type PoseMessage } from '../communication/protocol';
+import { RemotePoseBuffer } from '../communication/remotePose';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
 el('app').innerHTML = `
@@ -46,8 +47,10 @@ el('app').innerHTML = `
 const lifetime = new AbortController();
 let scene: StudioScene | undefined, model: RobotModel | undefined, retargeter: Retargeter | undefined;
 let source: 'simulation' | 'camera' | 'remote' = 'simulation', paused = false, disposed = false;
-let latest: RetargetFrame | undefined, simSeq = 0, remoteSeq = 0, sampledAt = -Infinity;
+let latest: RetargetFrame | undefined, simSeq = 0, sampledAt = -Infinity;
 let remoteClient: ReturnType<typeof createPoseClient> | undefined;
+let relayConnected = false, mobilePeerConnected = false;
+const remotePoses = new RemotePoseBuffer();
 const showError = (message: string) => { el('mapping-error').textContent = message; el('mapping-error').hidden = false; };
 const refreshFollow = () => {
   el('toggle-follow').textContent = paused ? '继续跟随' : '暂停跟随';
@@ -68,7 +71,7 @@ el('input-source').addEventListener('change', () => {
   const value = el<HTMLSelectElement>('input-source').value;
   source = value === 'camera' || value === 'remote' ? value : 'simulation';
   el('capture-panel').hidden = source !== 'camera'; el('simulation-controls').hidden = source !== 'simulation';
-  if (source !== 'remote') { remoteClient?.dispose(); remoteClient = undefined; }
+  if (source !== 'remote') { remoteClient?.dispose(); remoteClient = undefined; remotePoses.clear(); }
   refreshFollow();
 }, { signal });
 el<HTMLButtonElement>('create-pair').addEventListener('click', async () => {
@@ -82,17 +85,30 @@ el<HTMLButtonElement>('create-pair').addEventListener('click', async () => {
     link.hash = new URLSearchParams({ room: pair.room, token: pair.mobileToken }).toString();
     const anchor = el<HTMLAnchorElement>('mobile-link'); anchor.href = link.href; anchor.textContent = `手机配对链接 · 房间 ${pair.room}`; anchor.hidden = false;
     el<HTMLButtonElement>('copy-link').hidden = false;
-    const hello: HelloMessage = { type: 'hello', role: 'viewer', room: pair.room, token: pair.viewerToken };
-    remoteClient?.dispose();
-    remoteClient = createPoseClient(hello, (state: ConnectionState, detail) => {
-      el('pair-status').textContent = detail || ({ connecting: '电脑连接中…', connected: `电脑已连接 · 房间 ${pair.room}`, disconnected: '电脑连接断开，正在重连…', error: '电脑连接错误' }[state]);
-    }, (pose: PoseMessage) => {
-      if (source !== 'remote' || paused || disposed) return;
-      const now = performance.now();
-      latest = toRetargetFrame({ normalizedLandmarks: [], worldLandmarks: pose.landmarks }, now, ++remoteSeq);
-      retargeter?.accept(latest, now);
-    });
     el<HTMLSelectElement>('input-source').value = 'remote'; el<HTMLSelectElement>('input-source').dispatchEvent(new Event('change'));
+    const hello: HelloMessage = { type: 'hello', version: PROTOCOL_VERSION, role: 'viewer', room: pair.room, token: pair.viewerToken };
+    remotePoses.clear();
+    remoteClient = createPoseClient(hello, (state: ConnectionState, detail) => {
+      relayConnected = state === 'connected';
+      el('pair-status').textContent = detail || (state === 'connected'
+        ? mobilePeerConnected ? `手机已加入 · 房间 ${pair.room}` : `中继已连接 · 等待手机加入 · 房间 ${pair.room}`
+        : { connecting: '正在连接中继…', disconnected: '中继连接断开，正在重连…', error: '中继连接错误' }[state]);
+      if (state === 'disconnected' || state === 'error') { remotePoses.clear(); clearInput(); }
+    }, (pose: PoseMessage) => {
+      if (source === 'remote' && !paused && !disposed) remotePoses.push(pose, performance.now());
+    }, {
+      onPeer: connected => {
+        mobilePeerConnected = connected;
+        if (!connected) { remotePoses.clear(); clearInput(); }
+        if (relayConnected) el('pair-status').textContent = connected
+          ? `手机已加入 · 房间 ${pair.room} · 等待姿态采集`
+          : `中继已连接 · 等待手机加入 · 房间 ${pair.room}`;
+      },
+      onCapture: message => {
+        if (message.state === 'started') remotePoses.start(message.sessionId);
+        else if (remotePoses.stop(message.sessionId)) clearInput();
+      },
+    });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return;
     el('pair-status').textContent = `创建配对失败：${error instanceof Error ? error.message : String(error)}`;
@@ -103,15 +119,19 @@ el<HTMLButtonElement>('copy-link').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(link.href); el('pair-status').textContent = '手机链接已复制；凭据只保存在该链接片段中。'; }
   catch { el('pair-status').textContent = '浏览器未允许复制，请从地址栏复制手机链接。'; }
 }, { signal });
-el('toggle-follow').addEventListener('click', () => { paused = !paused; retargeter?.setPaused(paused); refreshFollow(); }, { signal });
-el('reset-mapping').addEventListener('click', () => { retargeter?.reset(); latest = undefined; paused = true; refreshFollow(); }, { signal });
+el('toggle-follow').addEventListener('click', () => {
+  paused = !paused;
+  if (paused) { remotePoses.clear(); clearInput(); }
+  retargeter?.setPaused(paused); refreshFollow();
+}, { signal });
+el('reset-mapping').addEventListener('click', () => { remotePoses.clear(); retargeter?.reset(); latest = undefined; paused = true; refreshFollow(); }, { signal });
 el('front-view').addEventListener('click', () => scene?.resetCamera('front'), { signal });
 el('show-rig').addEventListener('click', () => {
   const button = el('show-rig'), enabled = button.getAttribute('aria-pressed') !== 'true';
   button.setAttribute('aria-pressed', String(enabled)); scene?.setSkeleton(enabled);
 }, { signal });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { paused = true; retargeter?.setPaused(true); refreshFollow(); }
+   if (document.hidden) { paused = true; remotePoses.clear(); clearInput(); retargeter?.setPaused(true); refreshFollow(); }
 }, { signal });
 
 async function initialize(): Promise<void> {
@@ -148,6 +168,12 @@ async function initialize(): Promise<void> {
       if (source === 'simulation') {
         latest = simulatedPose(el<HTMLSelectElement>('simulation').value as Simulation, nowMs, ++simSeq);
         retargeter!.accept(latest, nowMs);
+      } else if (source === 'remote' && !paused) {
+        const pose = remotePoses.take();
+        if (pose) {
+          latest = toRetargetFrame({ normalizedLandmarks: [], worldLandmarks: [...pose.landmarks] }, pose.timestampMs, pose.seq);
+          retargeter!.accept(latest, nowMs);
+        }
       }
       retargeter!.update(nowMs, dt);
       if (nowMs - sampledAt < 150) return;

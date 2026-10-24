@@ -5,8 +5,9 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8082', changeOrigin: true },
-      '/ws': { target: 'ws://127.0.0.1:8082', ws: true },
+      // Keep the relay's strict same-origin check valid behind the dev proxy.
+      '/api': { target: 'http://127.0.0.1:8082', changeOrigin: true, headers: { origin: 'http://127.0.0.1:8082' } },
+      '/ws': { target: 'ws://127.0.0.1:8082', ws: true, changeOrigin: true, headers: { origin: 'http://127.0.0.1:8082' } },
     },
   },
   preview: { host: '0.0.0.0' },

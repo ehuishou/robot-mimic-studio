@@ -3,22 +3,40 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 
 // src/communication/protocol.ts
+var PROTOCOL_VERSION = 1;
 var LANDMARK_COUNT = 33;
 var MAX_POSE_BYTES = 8192;
 var MAX_POSES_PER_SECOND = 20;
 var MAX_COORDINATE = 10;
+var SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+function hasExactKeys(value, keys) {
+  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+function isCaptureMessage(value, room) {
+  if (!value || typeof value !== "object") return false;
+  const message = value;
+  return hasExactKeys(value, ["type", "version", "room", "sessionId", "state"]) && message.type === "capture" && message.version === PROTOCOL_VERSION && typeof message.room === "string" && (!room || message.room === room) && typeof message.sessionId === "string" && SESSION_ID_PATTERN.test(message.sessionId) && (message.state === "started" || message.state === "stopped");
+}
+function isPingMessage(value) {
+  if (!value || typeof value !== "object") return false;
+  const message = value;
+  return hasExactKeys(value, ["type", "version", "nonce"]) && message.type === "ping" && message.version === PROTOCOL_VERSION && Number.isSafeInteger(message.nonce);
+}
 function isPoseMessage(value, room) {
   if (!value || typeof value !== "object") return false;
   const frame = value;
-  return frame.type === "pose" && typeof frame.room === "string" && (!room || frame.room === room) && Number.isFinite(frame.timestamp) && Number.isSafeInteger(frame.seq) && frame.seq >= 0 && Array.isArray(frame.landmarks) && frame.landmarks.length === LANDMARK_COUNT && frame.landmarks.every((point) => !!point && [point.x, point.y, point.z, point.visibility].every(Number.isFinite) && Math.abs(point.x) <= MAX_COORDINATE && Math.abs(point.y) <= MAX_COORDINATE && Math.abs(point.z) <= MAX_COORDINATE && point.visibility >= 0 && point.visibility <= 1);
+  return hasExactKeys(value, ["type", "version", "room", "sessionId", "timestamp", "seq", "landmarks"]) && frame.type === "pose" && frame.version === PROTOCOL_VERSION && typeof frame.room === "string" && (!room || frame.room === room) && typeof frame.sessionId === "string" && SESSION_ID_PATTERN.test(frame.sessionId) && Number.isFinite(frame.timestamp) && Number.isSafeInteger(frame.seq) && frame.seq >= 0 && Array.isArray(frame.landmarks) && frame.landmarks.length === LANDMARK_COUNT && frame.landmarks.every((point) => !!point && hasExactKeys(point, ["x", "y", "z", "visibility"]) && [point.x, point.y, point.z, point.visibility].every(Number.isFinite) && Math.abs(point.x) <= MAX_COORDINATE && Math.abs(point.y) <= MAX_COORDINATE && Math.abs(point.z) <= MAX_COORDINATE && point.visibility >= 0 && point.visibility <= 1);
 }
 function isHelloMessage(value) {
   if (!value || typeof value !== "object") return false;
   const hello = value;
-  return hello.type === "hello" && (hello.role === "mobile" || hello.role === "viewer") && typeof hello.room === "string" && /^[A-Z2-9]{6}$/.test(hello.room) && typeof hello.token === "string" && /^[A-Za-z0-9_-]{40,}$/.test(hello.token);
+  return hasExactKeys(value, ["type", "version", "role", "room", "token"]) && hello.type === "hello" && hello.version === PROTOCOL_VERSION && (hello.role === "mobile" || hello.role === "viewer") && typeof hello.room === "string" && /^[A-Z2-9]{6}$/.test(hello.room) && typeof hello.token === "string" && /^[A-Za-z0-9_-]{40,}$/.test(hello.token);
 }
 
 // server/relay.ts
+var MAX_ROOMS = 1e3;
+var MAX_CONNECTIONS = 500;
+var MAX_VIEWER_BUFFER = MAX_POSE_BYTES * 2;
 var hash = (token) => createHash("sha256").update(token).digest();
 var sameToken = (left, right) => timingSafeEqual(hash(left), hash(right));
 var send = (ws, payload) => {
@@ -44,6 +62,10 @@ function attachRelay(servers) {
         response.writeHead(403).end(JSON.stringify({ error: "Forbidden" }));
         return;
       }
+      if (rooms.size >= MAX_ROOMS) {
+        response.writeHead(503).end(JSON.stringify({ error: "Room capacity reached" }));
+        return;
+      }
       let roomId;
       do {
         roomId = [...randomBytes(8)].map((value) => "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"[value % 32]).slice(0, 6).join("");
@@ -66,6 +88,10 @@ function attachRelay(servers) {
   }
   wss.on("connection", (ws) => {
     let role, room, roomId, rateStart = Date.now(), rateCount = 0;
+    if (wss.clients.size > MAX_CONNECTIONS) {
+      ws.close(1013, "server busy");
+      return;
+    }
     const authTimer = setTimeout(() => ws.close(4001, "hello timeout"), 5e3);
     ws.on("message", (data, binary) => {
       const payload = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data);
@@ -99,14 +125,31 @@ function attachRelay(servers) {
         clearTimeout(authTimer);
         room.peers[role] = ws;
         room.touchedAt = Date.now();
-        send(ws, { type: "ready" });
+        send(ws, { type: "ready", version: PROTOCOL_VERSION });
         const peer = room.peers[role === "mobile" ? "viewer" : "mobile"];
         send(ws, { type: "peer", connected: peer?.readyState === WebSocket.OPEN });
+        if (role === "viewer" && room.activeSessionId) send(ws, { type: "capture", sessionId: room.activeSessionId, state: "started" });
         if (peer) send(peer, { type: "peer", connected: true });
         return;
       }
-      if (role !== "mobile" || !isPoseMessage(message, roomId)) {
-        send(ws, { type: "error", message: "Invalid message or role" });
+      if (isPingMessage(message)) {
+        send(ws, { type: "pong", nonce: message.nonce });
+        return;
+      }
+      if (role === "mobile" && isCaptureMessage(message, roomId)) {
+        if (message.state === "started") {
+          if (room?.activeSessionId && room.activeSessionId !== message.sessionId) send(room.peers.viewer, { type: "capture", sessionId: room.activeSessionId, state: "stopped" });
+          room.activeSessionId = message.sessionId;
+          send(room.peers.viewer, { type: "capture", sessionId: message.sessionId, state: "started" });
+        } else if (room?.activeSessionId === message.sessionId) {
+          room.activeSessionId = void 0;
+          send(room.peers.viewer, { type: "capture", sessionId: message.sessionId, state: "stopped" });
+        }
+        return;
+      }
+      if (role !== "mobile" || !isPoseMessage(message, roomId) || message.sessionId !== room?.activeSessionId) {
+        send(ws, { type: "error", code: "invalid_message", message: "Invalid message, role or capture session" });
+        ws.close(4002, "invalid message");
         return;
       }
       const now = Date.now();
@@ -116,13 +159,27 @@ function attachRelay(servers) {
       }
       if (++rateCount > MAX_POSES_PER_SECOND) return;
       const viewer = room?.peers.viewer;
-      if (viewer?.readyState === WebSocket.OPEN && viewer.bufferedAmount < MAX_POSE_BYTES * 2) send(viewer, message);
+      if (viewer?.readyState === WebSocket.OPEN && viewer.bufferedAmount < MAX_VIEWER_BUFFER) {
+        send(viewer, {
+          type: "pose",
+          version: PROTOCOL_VERSION,
+          room: roomId,
+          sessionId: message.sessionId,
+          timestamp: message.timestamp,
+          seq: message.seq,
+          landmarks: message.landmarks.map(({ x, y, z, visibility }) => ({ x, y, z, visibility }))
+        });
+      }
     });
     ws.on("close", () => {
       clearTimeout(authTimer);
       if (role && room && room.peers[role] === ws) {
         delete room.peers[role];
         room.touchedAt = Date.now();
+        if (role === "mobile" && room.activeSessionId) {
+          send(room.peers.viewer, { type: "capture", sessionId: room.activeSessionId, state: "stopped" });
+          room.activeSessionId = void 0;
+        }
         send(room.peers[role === "mobile" ? "viewer" : "mobile"], { type: "peer", connected: false });
       }
     });

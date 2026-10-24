@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { after, before, test } from 'node:test';
 import WebSocket from 'ws';
 import { attachRelay } from '../server/relay';
+import { PROTOCOL_VERSION } from '../src/communication/protocol';
 
 const server = createServer((_request, response) => {
   if (!response.writableEnded) response.writeHead(404).end();
@@ -46,7 +47,7 @@ function connect(role: 'mobile' | 'viewer', room: string, token: string, request
     if (waiter) waiter(value);
     else queue.push(value);
   });
-  socket.once('open', () => socket.send(JSON.stringify({ type: 'hello', role, room, token })));
+  socket.once('open', () => socket.send(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, role, room, token })));
   return socket;
 }
 
@@ -65,8 +66,14 @@ async function nextMessageOf(socket: WebSocket, type: string): Promise<any> {
   return message;
 }
 
+const sessionId = '0123456789abcdef';
+
+function capture(room: string, state: 'started' | 'stopped' = 'started', id = sessionId) {
+  return { type: 'capture', version: PROTOCOL_VERSION, room, sessionId: id, state };
+}
+
 function pose(room: string, seq = 1, count = 33) {
-  return { type: 'pose', room, timestamp: 1, seq, landmarks: Array.from({ length: count }, () => ({ x: 0, y: 0, z: 0, visibility: 1 })) };
+  return { type: 'pose', version: PROTOCOL_VERSION, room, sessionId, timestamp: seq, seq, landmarks: Array.from({ length: count }, () => ({ x: 0, y: 0, z: 0, visibility: 1 })) };
 }
 
 test('creates a room only for same-origin POST requests', async () => {
@@ -88,6 +95,8 @@ test('authenticates peers and relays poses only inside the room', async t => {
   assert.equal((await nextMessage(mobile)).type, 'ready');
   assert.equal((await nextMessage(viewer)).type, 'ready');
   assert.equal((await nextMessage(otherViewer)).type, 'ready');
+  mobile.send(JSON.stringify(capture(first.room)));
+  assert.deepEqual(await nextMessageOf(viewer, 'capture'), { type: 'capture', sessionId, state: 'started' });
   const received = nextMessageOf(viewer, 'pose');
   mobile.send(JSON.stringify(pose(first.room)));
   assert.deepEqual(await received, pose(first.room));
@@ -115,6 +124,7 @@ test('rejects invalid credentials, duplicate roles and malformed poses', async t
   const error = nextMessageOf(viewer, 'error');
   viewer.send(JSON.stringify(pose(room.room)));
   assert.equal((await error).type, 'error');
+  mobile.send(JSON.stringify(capture(room.room)));
   const invalidPose = nextMessageOf(mobile, 'error');
   mobile.send(JSON.stringify(pose(room.room, 2, 32)));
   assert.equal((await invalidPose).type, 'error');
@@ -124,4 +134,42 @@ test('rejects WebSocket upgrades from a different origin', async () => {
   const socket = connect('viewer', 'ABC234', 'x'.repeat(40), 'https://attacker.invalid');
   const error = await (socket as any).__messages.error as Error;
   assert.match(error.message, /403/);
+});
+
+test('tracks capture sessions, informs peers, and answers heartbeats', async t => {
+  const room = await createRoom();
+  const mobile = connect('mobile', room.room, room.mobileToken);
+  const viewer = connect('viewer', room.room, room.viewerToken);
+  t.after(() => { mobile.close(); viewer.close(); });
+  await nextMessage(mobile);
+  await nextMessage(viewer);
+
+  mobile.send(JSON.stringify(capture(room.room, 'started', sessionId)));
+  assert.deepEqual(await nextMessageOf(viewer, 'capture'), { type: 'capture', sessionId, state: 'started' });
+
+  const nextSession = 'fedcba9876543210';
+  mobile.send(JSON.stringify(capture(room.room, 'started', nextSession)));
+  assert.deepEqual(await nextMessageOf(viewer, 'capture'), { type: 'capture', sessionId, state: 'stopped' });
+  assert.deepEqual(await nextMessageOf(viewer, 'capture'), { type: 'capture', sessionId: nextSession, state: 'started' });
+
+  mobile.send(JSON.stringify({ type: 'ping', version: PROTOCOL_VERSION, nonce: 7 }));
+  assert.deepEqual(await nextMessageOf(mobile, 'pong'), { type: 'pong', nonce: 7 });
+
+  mobile.close();
+  assert.deepEqual(await nextMessageOf(viewer, 'capture'), { type: 'capture', sessionId: nextSession, state: 'stopped' });
+  assert.deepEqual(await nextMessageOf(viewer, 'peer'), { type: 'peer', connected: false });
+});
+
+test('sends the active capture state to a viewer that joins later', async t => {
+  const room = await createRoom();
+  const mobile = connect('mobile', room.room, room.mobileToken);
+  t.after(() => mobile.close());
+  await nextMessage(mobile);
+  mobile.send(JSON.stringify(capture(room.room)));
+
+  const viewer = connect('viewer', room.room, room.viewerToken);
+  t.after(() => viewer.close());
+  assert.equal((await nextMessage(viewer)).type, 'ready');
+  assert.deepEqual(await nextMessageOf(viewer, 'peer'), { type: 'peer', connected: true });
+  assert.deepEqual(await nextMessageOf(viewer, 'capture'), { type: 'capture', sessionId, state: 'started' });
 });
