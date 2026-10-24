@@ -1,20 +1,46 @@
-import type { RigBindingConfig } from './types';
+import type { BodySegment, RigBindingConfig } from './types';
+import { sourceFor } from './sourceMapping';
 
+const segmentSet = new Set<BodySegment>(['torso', 'neck', 'upperArm', 'forearm', 'hand', 'upperLeg', 'lowerLeg', 'foot']);
 export function parseRigConfig(value: unknown): RigBindingConfig[] {
-  if (!value || typeof value !== 'object' || !('version' in value) || value.version !== 1
-    || !('bindings' in value) || !Array.isArray(value.bindings) || value.bindings.length > 8) throw new Error('映射配置格式无效，需要 version: 1 和 bindings 数组。');
+  if (!value || typeof value !== 'object' || !('version' in value) || (value.version !== 1 && value.version !== 2)
+    || !('bindings' in value) || !Array.isArray(value.bindings) || value.bindings.length > 32) throw new Error('映射配置格式无效，需要 version: 1/2 和 bindings 数组。');
+  const version = value.version;
   return value.bindings.map((binding: unknown) => {
     if (!binding || typeof binding !== 'object') throw new Error('映射条目无效。');
-    const b = binding as Record<string, unknown>;
+    const b = { ...binding } as Record<string, unknown>;
+    if (version === 1 && b.segment === undefined) b.segment = 'upperArm';
     const validPath = (path: unknown) => Array.isArray(path) && path.length > 0 && path.length <= 64 && path.every(index => Number.isSafeInteger(index) && index >= 0);
-    if ((b.side !== 'left' && b.side !== 'right') || (b.segment !== undefined && b.segment !== 'upperArm' && b.segment !== 'forearm')
-      || (b.enabled !== undefined && typeof b.enabled !== 'boolean') || !validPath(b.bonePath) || !validPath(b.endPath)
-      || typeof b.expectedBoneName !== 'string' || typeof b.expectedEndName !== 'string'
+    const sideValid = b.side === 'left' || b.side === 'right' || (version === 2 && b.side === 'center');
+    const segmentValid = typeof b.segment === 'string' && segmentSet.has(b.segment as BodySegment)
+      && (version === 2 || b.segment === 'upperArm' || b.segment === 'forearm')
+      && ((b.segment === 'torso' || b.segment === 'neck') === (b.side === 'center'));
+    const validReference = b.referenceDirection === undefined || (Array.isArray(b.referenceDirection)
+      && b.referenceDirection.length === 3 && b.referenceDirection.every(v => typeof v === 'number' && Number.isFinite(v))
+      && Math.hypot(...b.referenceDirection) > 1e-8);
+    if (!sideValid || !segmentValid || !validReference || (b.enabled !== undefined && typeof b.enabled !== 'boolean') || !validPath(b.bonePath)
+      || (b.endPath !== undefined && !validPath(b.endPath)) || (version === 1 && !validPath(b.endPath))
+      || typeof b.expectedBoneName !== 'string' || (b.expectedEndName !== undefined && typeof b.expectedEndName !== 'string')
+      || (b.endPath !== undefined && typeof b.expectedEndName !== 'string')
+      || (b.endPath === undefined && (!Array.isArray(b.referenceDirection) || b.referenceDirection.length !== 3
+        || !b.referenceDirection.every(v => typeof v === 'number' && Number.isFinite(v)) || Math.hypot(...b.referenceDirection) < 1e-8))
       || typeof b.maxSwingRadians !== 'number' || !Number.isFinite(b.maxSwingRadians) || b.maxSwingRadians <= 0 || b.maxSwingRadians > Math.PI
       || !Array.isArray(b.axisCorrection) || b.axisCorrection.length !== 4 || !b.axisCorrection.every(v => typeof v === 'number' && Number.isFinite(v))
-      || Math.abs(Math.hypot(...b.axisCorrection) - 1) > 1e-5) throw new Error('映射条目的骨骼路径、限位或轴修正无效。');
-    return { side: b.side, segment: b.segment, enabled: b.enabled, bonePath: [...b.bonePath as number[]], endPath: [...b.endPath as number[]],
-      expectedBoneName: b.expectedBoneName, expectedEndName: b.expectedEndName, maxSwingRadians: b.maxSwingRadians, axisCorrection: [b.axisCorrection[0], b.axisCorrection[1], b.axisCorrection[2], b.axisCorrection[3]] };
+      || Math.abs(Math.hypot(...b.axisCorrection) - 1) > 1e-5) throw new Error('映射条目的骨骼路径、参考方向、限位或轴修正无效。');
+    const source = sourceFor(b.side as 'left' | 'right' | 'center', b.segment as BodySegment);
+    const sourceStart = b.sourceStart ?? source.start, sourceEnd = b.sourceEnd ?? source.end;
+    const validLandmarks = (indices: unknown) => Array.isArray(indices) && indices.length > 0 && indices.length <= 4
+      && indices.every(index => Number.isSafeInteger(index) && index >= 0 && index < 33);
+    if (!validLandmarks(sourceStart) || !validLandmarks(sourceEnd)) throw new Error('映射来源关键点无效（MediaPipe Pose 索引范围为 0–32）。');
+    return {
+      side: b.side as RigBindingConfig['side'], segment: b.segment as BodySegment, enabled: b.enabled as boolean | undefined,
+      sourceStart: [...sourceStart as number[]], sourceEnd: [...sourceEnd as number[]], bonePath: [...b.bonePath as number[]],
+      endPath: b.endPath === undefined ? undefined : [...b.endPath as number[]], expectedBoneName: b.expectedBoneName,
+      expectedEndName: b.expectedEndName as string | undefined,
+      referenceDirection: Array.isArray(b.referenceDirection) ? [...b.referenceDirection as number[]] as [number, number, number] : undefined,
+      maxSwingRadians: b.maxSwingRadians as number,
+      axisCorrection: [b.axisCorrection[0], b.axisCorrection[1], b.axisCorrection[2], b.axisCorrection[3]],
+    };
   });
 }
 

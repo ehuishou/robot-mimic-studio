@@ -21,26 +21,26 @@ const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElem
 el('app').innerHTML = `
 <header class="mapping-header"><a class="brand" href="./">robot<span>studio</span><b>.</b></a><nav><a href="./">模型工作台 ↗</a><a href="./pose.html">姿态识别 ↗</a></nav></header>
 <main class="mapping-workspace">
-  <section class="mapping-heading"><div><div class="eyebrow">HUMAN → ROBOT / MOTION MAPPING</div><h1>让动作，产生共鸣<span>。</span></h1><p>从你的双臂，到机器人的下一次抬手。</p></div><span class="chapter">04<small>/ 05</small></span></section>
+  <section class="mapping-heading"><div><div class="eyebrow">HUMAN → ROBOT / MOTION MAPPING</div><h1>让动作，产生共鸣<span>。</span></h1><p>从你的动作，到机器人的全身共鸣。</p></div><span class="chapter">04<small>/ 05</small></span></section>
   <div class="mapping-grid">
     <section class="robot-panel"><div class="panel-bar"><strong>动作视窗 <small>LIVE RETARGET</small></strong><span id="mapping-fps">— FPS</span></div>
       <div id="mapping-viewport" aria-label="机器人动作映射视窗"></div>
       <div class="model-caption"><span id="rig-source">正在加载模型…</span><span id="follow-status" role="status">准备中</span></div>
-      <div class="follow-actions"><button id="toggle-follow" disabled>暂停跟随</button><button id="reset-mapping" disabled>重置姿势</button><button id="front-view">正面视角</button><button id="show-rig" aria-pressed="false">显示骨架</button></div>
-      <p class="mapping-help">绿色箭头为输入方向，灰色箭头为实际臂向。暂停可保持姿态；重置后点击继续跟随。</p>
+      <div class="follow-actions"><button id="toggle-follow" disabled>暂停跟随</button><button id="reset-mapping" disabled>重置姿势</button><button id="front-view">正面视角</button><button id="show-rig" aria-pressed="false">骨架与方向</button></div>
+      <p class="mapping-help">显示骨架时，绿色箭头为输入方向，灰色箭头为实际骨骼方向。暂停可保持姿态；重置后点击继续跟随。</p>
       <p id="mapping-error" class="error" role="alert" hidden></p><p id="mapping-warning" class="mapping-notice" role="status"></p>
     </section>
     <section class="input-panel"><div class="panel-bar"><strong>动作来源 <small>INPUT SOURCE</small></strong><span class="local-chip">本机处理</span></div>
       <div class="source-controls"><label for="input-source">输入方式</label><select id="input-source"><option value="simulation">模拟姿态</option><option value="camera">本机摄像头</option><option value="remote">手机 WebSocket</option></select>
       <div class="pair-controls"><button id="create-pair" type="button">创建手机配对</button><p id="pair-status" role="status">在电脑上创建一次性配对，再用手机打开生成的链接。</p><a id="mobile-link" hidden></a><button id="copy-link" type="button" hidden>复制手机链接</button></div>
-      <div id="simulation-controls"><label for="simulation">模拟动作</label><select id="simulation">${Object.entries(SIMULATIONS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select><p>先选择“只抬左臂”或“只抬右臂”，检查两侧独立运动，再试摄像头。</p></div></div>
+      <div id="simulation-controls"><label for="simulation">模拟动作</label><select id="simulation">${Object.entries(SIMULATIONS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select><p>先选择“全身动作”，确认躯干、头颈、双臂和双腿都能独立响应，再试摄像头。</p></div></div>
       <div id="capture-panel" class="embedded-capture" hidden></div>
-      <div class="input-notes"><span>01 / 解剖左右保持对应</span><span>02 / 肩、肘清晰入镜</span><span>03 / 当前驱动双上臂</span></div>
+      <div class="input-notes"><span>01 / 解剖左右保持对应</span><span>02 / 头部到脚尖完整入镜</span><span>03 / 当前驱动全身骨骼</span></div>
     </section>
   </div>
   <section class="debug-section"><details open><summary>映射观察 <small>方向 · 置信度 · 四元数 xyzw</small></summary><div id="mapping-debug" class="debug-grid"></div></details>
     <details><summary>实际模型骨架 <small id="rig-count"></small></summary><pre id="rig-tree"></pre></details>
-    <p class="mapping-help">世界坐标用于相对方向。当前锁定轴向扭转并限制摆角，暂不驱动前臂、躯干及腿部。摄像头识别和机器人在此设备的同一页面运行。</p>
+    <p class="mapping-help">世界坐标用于相对方向。当前按骨骼参考方向映射躯干、头颈、双臂、双腿及末端，并限制摆角。支持本机摄像头与手机配对；当前不包含手指、轴向扭转、根位移或脚底锁定。</p>
   </section>
 </main><footer class="mapping-footer"><span>ROBOT STUDIO / MOTION LAB</span><span>STAGE 03</span></footer>`;
 
@@ -107,6 +107,9 @@ el<HTMLButtonElement>('create-pair').addEventListener('click', async () => {
       onCapture: message => {
         if (message.state === 'started') remotePoses.start(message.sessionId);
         else if (remotePoses.stop(message.sessionId)) clearInput();
+        if (relayConnected && mobilePeerConnected) el('pair-status').textContent = message.state === 'started'
+          ? `手机采集中 · 房间 ${pair.room} · 全身关键点驱动`
+          : `手机已停止采集 · 房间 ${pair.room} · 等待重新启动`;
       },
     });
   } catch (error) {
@@ -121,17 +124,17 @@ el<HTMLButtonElement>('copy-link').addEventListener('click', async () => {
 }, { signal });
 el('toggle-follow').addEventListener('click', () => {
   paused = !paused;
-  if (paused) { remotePoses.clear(); clearInput(); }
+  remotePoses.discardPending(); clearInput();
   retargeter?.setPaused(paused); refreshFollow();
 }, { signal });
-el('reset-mapping').addEventListener('click', () => { remotePoses.clear(); retargeter?.reset(); latest = undefined; paused = true; refreshFollow(); }, { signal });
+el('reset-mapping').addEventListener('click', () => { remotePoses.discardPending(); retargeter?.reset(); latest = undefined; paused = true; refreshFollow(); }, { signal });
 el('front-view').addEventListener('click', () => scene?.resetCamera('front'), { signal });
 el('show-rig').addEventListener('click', () => {
   const button = el('show-rig'), enabled = button.getAttribute('aria-pressed') !== 'true';
   button.setAttribute('aria-pressed', String(enabled)); scene?.setSkeleton(enabled);
 }, { signal });
 document.addEventListener('visibilitychange', () => {
-   if (document.hidden) { paused = true; remotePoses.clear(); clearInput(); retargeter?.setPaused(true); refreshFollow(); }
+  if (document.hidden) { paused = true; remotePoses.discardPending(); clearInput(); retargeter?.setPaused(true); refreshFollow(); }
 }, { signal });
 
 async function initialize(): Promise<void> {
@@ -143,7 +146,7 @@ async function initialize(): Promise<void> {
     const rigConfig = model.source === 'fallback' ? { bindings: fallbackMapping(model.root, model.bones), notice: '' } : await loadRigConfig(signal);
     if (disposed) return;
     const configs = rigConfig.bindings;
-    const activeConfigs = configs.filter(c => c.enabled !== false && c.segment !== 'forearm');
+    const activeConfigs = configs.filter(c => c.enabled !== false);
     retargeter = new Retargeter(model.root, model.bones, configs);
     el('rig-source').textContent = model.source === 'fallback' ? '内置机器人 · 17 根骨骼' : 'robot.glb · 实际骨架';
     el('mapping-warning').textContent = [model.source === 'fallback' ? '当前使用内置程序化骨架；真实 GLB 的映射与验收待模型加入后完成。' : rigConfig.notice || '已读取 GLB 骨架及专属映射配置。', ...retargeter.warnings].join(' ');
@@ -160,8 +163,12 @@ async function initialize(): Promise<void> {
           part.renderOrder = 10;
         }
       }
+      input.visible = actual.visible = false;
       scene!.scene.add(input, actual);
-      return { side: config.side, entry, input, actual, reference: resolvePath(model!.root, config.endPath)!.position.clone().normalize() };
+      const referenceNode = config.endPath ? resolvePath(model!.root, config.endPath) : undefined;
+      const reference = referenceNode instanceof THREE.Bone ? referenceNode.position.clone().normalize()
+        : new THREE.Vector3(...(config.referenceDirection ?? [0, -1, 0])).normalize();
+      return { path: config.bonePath.join('/'), entry, input, actual, reference };
     });
     const origin = new THREE.Vector3(), direction = new THREE.Vector3(), quaternion = new THREE.Quaternion();
     scene.setUpdate((nowMs, dt) => {
@@ -182,9 +189,11 @@ async function initialize(): Promise<void> {
       if (retargeter!.warnings.length) el('mapping-warning').textContent = [rigConfig.notice || model!.notice, ...retargeter!.warnings].filter(Boolean).join(' ');
       renderDebug(el('mapping-debug'), debug, latest);
       for (const arrow of arrows) {
-        const data = debug.find(b => b.side === arrow.side)!;
+        const data = debug.find(b => b.path === arrow.path);
+        if (!data) continue;
         arrow.entry.bone.getWorldPosition(origin); arrow.input.position.copy(origin); arrow.actual.position.copy(origin);
-        arrow.input.visible = data.direction !== null && data.state !== 'rest' && data.state !== 'recovering';
+        arrow.actual.visible = el('show-rig').getAttribute('aria-pressed') === 'true';
+        arrow.input.visible = arrow.actual.visible && data.direction !== null && data.state !== 'rest' && data.state !== 'recovering';
         if (data.direction) arrow.input.setDirection(direction.fromArray(data.direction));
         arrow.entry.bone.getWorldQuaternion(quaternion);
         arrow.actual.setDirection(direction.copy(arrow.reference).applyQuaternion(quaternion).normalize());

@@ -41,7 +41,7 @@ test('non-identity rest and rotating parent are correctly handled in parent spac
   bone.name = 'actual shoulder'; end.name = 'actual elbow'; bone.rotation.set(0.3, 0.1, -0.2);
   end.position.set(0.1, -0.4, 0.03); root.add(parent); parent.add(bone); bone.add(end);
   const bones = collectBones(root);
-  const r = new Retargeter(root, bones, [{ side: 'left', bonePath: objectPath(root, bone)!, endPath: objectPath(root, end)!, expectedBoneName: bone.name,
+  const r = new Retargeter(root, bones, [{ side: 'left', segment: 'upperArm', sourceStart: [11], sourceEnd: [13], bonePath: objectPath(root, bone)!, endPath: objectPath(root, end)!, expectedBoneName: bone.name,
     expectedEndName: end.name, maxSwingRadians: Math.PI, axisCorrection: [0, 0, 0, 1] }]);
   drive(r, 'left');
   let actual = end.position.clone().normalize().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()));
@@ -95,7 +95,7 @@ test('swing limit bounds reversed input and deterministic twist has no quaternio
   const s = setup(); drive(s.retargeter, 'antipode');
   const left = s.arm('Left');
   assert.ok(left.bone.quaternion.angleTo(left.initialQuaternion) <= THREE.MathUtils.degToRad(160) + 1e-6);
-  assert.equal(s.retargeter.debug()[0].limited, true);
+  assert.equal(s.retargeter.debug().find(d => d.side === 'left' && d.segment === 'upperArm')!.limited, true);
   for (let i = 0; i < 600; i++) {
     const baseFrame = simulatedPose('antipode', 2100 + i * 20, 3000000 + i);
     const f = { ...baseFrame, worldLandmarks: [...baseFrame.worldLandmarks] };
@@ -135,14 +135,14 @@ test('adapter keeps normalized image coordinates out of world retarget input', (
   assert.deepEqual(adapted.worldLandmarks, []); assert.equal(adapted.coordinateSpace, 'mediapipe-world');
 });
 
-test('GLB mapping JSON validates schema and preserves explicit asset paths; forearm configs stay disabled', () => {
+test('GLB v2 mapping validates schema and enables all fourteen body segments', () => {
   const s = setup();
-  const configs = parseRigConfig(JSON.parse(JSON.stringify({ version: 1, bindings: s.configs })));
-  assert.equal(configs.filter(c => c.segment === 'forearm' && c.enabled === false).length, 2);
-  assert.equal(s.retargeter.debug().length, 2);
-  assert.throws(() => parseRigConfig({ version: 1, bindings: [{ ...configs[0], bonePath: [-1] }] }));
+  const configs = parseRigConfig(JSON.parse(JSON.stringify({ version: 2, bindings: s.configs })));
+  assert.equal(configs.filter(c => c.segment === 'forearm' && c.enabled !== false).length, 2);
+  assert.equal(s.retargeter.debug().length, 14);
+  assert.throws(() => parseRigConfig({ version: 2, bindings: [{ ...configs[0], bonePath: [-1] }] }));
   assert.throws(() => parseRigConfig({ version: 1, bindings: [{ ...configs[0], axisCorrection: [0, 0, 0, 0] }] }));
-  assert.throws(() => parseRigConfig({ version: 2, bindings: [] }));
+  assert.throws(() => parseRigConfig({ version: 3, bindings: [] }));
   assert.throws(() => parseRigConfig({ version: 1, bindings: [{ ...configs[0], maxSwingRadians: Infinity }] }));
   s.close();
 });

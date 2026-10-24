@@ -14,7 +14,8 @@
     "prepare:pose": "node scripts/prepare-pose-assets.mjs",
     "generate:model": "node scripts/generate-robot-glb.mjs",
     "test:pose": "node scripts/verify-pose-browser.mjs",
-    "test:retarget": "node scripts/verify-retarget-browser.mjs"
+    "test:retarget": "node scripts/verify-retarget-browser.mjs",
+    "test:full-body": "tsx scripts/verify-full-body-browser.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.1.1",

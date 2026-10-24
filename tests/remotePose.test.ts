@@ -73,3 +73,16 @@ test('stop and clear discard buffered data and deactivate the session', () => {
   assert.equal(buffer.take(), undefined);
   assert.equal(buffer.push(pose(secondSession, 2, 2), 40), false);
 });
+
+
+test('viewer pause/reset discard pending frames but preserve session and ordering for resume', () => {
+  const buffer = new RemotePoseBuffer();
+  buffer.start(firstSession);
+  buffer.push(pose(firstSession, 5, 500), 10);
+  buffer.discardPending();
+  assert.equal(buffer.take(), undefined);
+  assert.equal(buffer.push(pose(firstSession, 4, 400), 20), false);
+  assert.equal(buffer.push(pose(firstSession, 6, 600), 30), true);
+  assert.equal(buffer.take()?.timestampMs, 30);
+  assert.equal(buffer.push(pose(secondSession, 7, 700), 40), false);
+});

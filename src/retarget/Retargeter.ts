@@ -3,12 +3,11 @@ import { resetBones } from '../robot/bones';
 import type { BoneEntry } from '../robot/bones';
 import { isVisible } from '../pose/poseTypes';
 import { resolvePath, supportedChain } from './rigMapping';
-import type { ArmDebug, RigBindingConfig, RetargetFrame, FollowState } from './types';
+import type { BindingDebug, RigBindingConfig, RetargetFrame, FollowState } from './types';
 
 interface Binding {
   config: RigBindingConfig;
   entry: BoneEntry;
-  reference: THREE.Vector3;
   restDirection: THREE.Vector3;
   antipodalAxis: THREE.Vector3;
   swingAxis: THREE.Vector3;
@@ -24,6 +23,18 @@ interface Binding {
 const HOLD_MS = 250;
 const MAX_FRAME_AGE_MS = 1500;
 
+function averageLandmarks(frame: RetargetFrame, indices: readonly number[], target: THREE.Vector3): boolean {
+  if (indices.length === 0) return false;
+  target.set(0, 0, 0);
+  for (const index of indices) {
+    const point = frame.worldLandmarks[index];
+    if (!isVisible(point)) return false;
+    target.x += point.x; target.y += point.y; target.z += point.z;
+  }
+  target.multiplyScalar(1 / indices.length);
+  return Number.isFinite(target.x) && Number.isFinite(target.y) && Number.isFinite(target.z);
+}
+
 export class Retargeter {
   readonly warnings: string[] = [];
   private readonly bindings: Binding[] = [];
@@ -33,6 +44,8 @@ export class Retargeter {
   private lastTimestamp = -Infinity;
   private paused = false;
   private disposed = false;
+  private readonly worldStart = new THREE.Vector3();
+  private readonly worldEnd = new THREE.Vector3();
   private readonly worldDirection = new THREE.Vector3();
   private readonly parentDirection = new THREE.Vector3();
   private readonly cross = new THREE.Vector3();
@@ -44,29 +57,32 @@ export class Retargeter {
     const occupied = new Set<THREE.Bone>();
     for (const config of configs) {
       if (config.enabled === false) continue;
-      if (config.segment === 'forearm') { this.warnings.push(config.expectedBoneName + '：前臂配置已记录，本版仅驱动上臂。'); continue; }
-      const bone = resolvePath(root, config.bonePath), end = resolvePath(root, config.endPath);
+      const bone = resolvePath(root, config.bonePath);
+      const end = config.endPath ? resolvePath(root, config.endPath) : undefined;
       const entry = bones.find(e => e.bone === bone);
-      if (!(bone instanceof THREE.Bone) || !(end instanceof THREE.Bone) || !entry || end.parent !== bone
-        || bone.name !== config.expectedBoneName || end.name !== config.expectedEndName || occupied.has(bone)) {
-        this.warnings.push(`${config.side}：骨骼路径、名称或直接关节链不匹配，已停用。`); continue;
+      const reference = end instanceof THREE.Bone && end.parent === bone ? end.position.clone()
+        : config.referenceDirection ? new THREE.Vector3(...config.referenceDirection) : undefined;
+      if (!(bone instanceof THREE.Bone) || !entry || occupied.has(bone)
+        || (config.endPath && (!(end instanceof THREE.Bone) || end.parent !== bone || end.name !== config.expectedEndName))
+        || bone.name !== config.expectedBoneName || !reference) {
+        this.warnings.push(`${config.expectedBoneName}：骨骼路径、名称或参考关节不匹配，已停用。`); continue;
       }
-      if (!supportedChain(bone) || end.position.lengthSq() < 1e-10 || !Number.isFinite(end.position.lengthSq())
+      if (!supportedChain(bone) || reference.lengthSq() < 1e-10 || !Number.isFinite(reference.lengthSq())
         || !Number.isFinite(config.maxSwingRadians) || config.maxSwingRadians <= 0 || config.maxSwingRadians > Math.PI
         || !config.axisCorrection.every(Number.isFinite) || Math.abs(new THREE.Quaternion(...config.axisCorrection).length() - 1) > 1e-5) {
         this.warnings.push(`${bone.name}：参考方向、限位或变换不受支持（需正均匀缩放），已停用。`); continue;
       }
       occupied.add(bone);
-      const reference = end.position.clone().normalize();
-      const restDirection = reference.clone().applyQuaternion(entry.initialQuaternion).normalize();
+      const restDirection = reference.normalize().applyQuaternion(entry.initialQuaternion).normalize();
       // Stable, deterministic perpendicular at the antipode. No measured axial twist is inferred.
       const tangent = Math.abs(restDirection.x) < 0.8 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
       const antipodalAxis = new THREE.Vector3().crossVectors(restDirection, tangent).normalize();
-      this.bindings.push({ config, entry, reference, restDirection, antipodalAxis, swingAxis: antipodalAxis.clone(),
+      this.bindings.push({ config, entry, restDirection, antipodalAxis, swingAxis: antipodalAxis.clone(),
         correction: new THREE.Quaternion(...config.axisCorrection), target: entry.initialQuaternion.clone(),
         direction: new THREE.Vector3(), lastValidMs: -Infinity, hasDirection: false, state: 'rest', limited: false, supported: true });
     }
-    for (const side of ['left', 'right']) if (!this.bindings.some(b => b.config.side === side)) this.warnings.push(`${side} 上臂未绑定。`);
+    this.bindings.sort((a, b) => a.entry.depth - b.entry.depth);
+    for (const side of ['left', 'right'] as const) if (!this.bindings.some(b => b.config.side === side && b.config.segment === 'upperArm')) this.warnings.push(`${side === 'left' ? '左' : '右'}上臂未绑定。`);
   }
 
   /** Ingest only new, timestamped world observations; render updates never refresh observation age. */
@@ -88,6 +104,7 @@ export class Retargeter {
     if (this.paused) { for (const b of this.bindings) b.state = b.supported ? 'paused' : 'disabled'; return; }
     const fresh = this.frame && this.frame.seq !== this.consumedSeq;
     const alpha = 1 - Math.exp(-Math.min(deltaSeconds, 0.1) / 0.12);
+    // Bindings are stored parent-before-child so torso updates are applied before neck and limb joints.
     for (const b of this.bindings) {
       if (!supportedChain(b.entry.bone)) {
         b.state = 'disabled';
@@ -96,15 +113,15 @@ export class Retargeter {
       }
       if (!b.supported) continue;
       if (fresh) {
-        const [shoulder, elbow] = b.config.side === 'left' ? [11, 13] : [12, 14];
-        const start = this.frame!.worldLandmarks[shoulder], end = this.frame!.worldLandmarks[elbow];
         b.hasDirection = false;
-        if (isVisible(start) && isVisible(end)) {
-          this.worldDirection.set(end.x - start.x, start.y - end.y, start.z - end.z).applyQuaternion(b.correction);
+        if (averageLandmarks(this.frame!, b.config.sourceStart, this.worldStart)
+          && averageLandmarks(this.frame!, b.config.sourceEnd, this.worldEnd)) {
+          // MediaPipe image/world convention is x-right, y-down, z-away; Three.js target is y-up, +z toward the viewer (flip y AND z).
+          this.worldDirection.set(this.worldEnd.x - this.worldStart.x, this.worldStart.y - this.worldEnd.y,
+            this.worldStart.z - this.worldEnd.z).applyQuaternion(b.correction);
           const length = this.worldDirection.lengthSq();
           if (Number.isFinite(length) && length > 1e-10) {
-            b.direction.copy(this.worldDirection).normalize();
-            b.lastValidMs = this.frame!.timestampMs; b.hasDirection = true;
+            b.direction.copy(this.worldDirection).normalize(); b.lastValidMs = this.frame!.timestampMs; b.hasDirection = true;
           }
         }
       }
@@ -134,8 +151,8 @@ export class Retargeter {
     if (fresh) this.consumedSeq = this.frame!.seq;
   }
 
-  debug(): ArmDebug[] {
-    return this.bindings.map(b => ({ side: b.config.side, name: b.entry.name, path: b.config.bonePath.join('/'), state: b.state,
+  debug(): BindingDebug[] {
+    return this.bindings.map(b => ({ side: b.config.side, segment: b.config.segment, name: b.entry.name, path: b.config.bonePath.join('/'), state: b.state,
       direction: Number.isFinite(b.lastValidMs) ? b.direction.toArray() : null, target: b.target.toArray(), actual: b.entry.bone.quaternion.toArray(),
       errorDegrees: THREE.MathUtils.radToDeg(b.entry.bone.quaternion.angleTo(b.target)), limited: b.limited,
       lastValidMs: Number.isFinite(b.lastValidMs) ? b.lastValidMs : null }));

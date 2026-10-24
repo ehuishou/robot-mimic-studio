@@ -28,7 +28,7 @@ if (typeof globalThis.ProgressEvent === 'undefined') {
   });
 }
 
-test('delivery robot.glb loads as a 17-joint skinned model and its exported mapping drives both arms', async () => {
+test('delivery robot.glb loads as a 17-joint skinned model and its exported mapping drives the full body', async () => {
   const [file, mappingText] = await Promise.all([
     readFile(new URL('../public/models/robot.glb', import.meta.url)),
     readFile(new URL('../public/models/robot.mapping.json', import.meta.url), 'utf8'),
@@ -69,19 +69,23 @@ test('delivery robot.glb loads as a 17-joint skinned model and its exported mapp
   }
 
   const configs = parseRigConfig(JSON.parse(mappingText));
-  assert.equal(configs.length, 4);
-  assert.equal(configs.filter((config) => config.enabled === true).length, 2);
+  assert.equal(configs.length, 14);
+  assert.equal(configs.filter((config) => config.enabled === true).length, 14);
   for (const config of configs) {
     const bone = resolvePath(root, config.bonePath);
-    const end = resolvePath(root, config.endPath);
     assert.equal(bone?.name, config.expectedBoneName);
-    assert.equal(end?.name, config.expectedEndName);
-    assert.equal(end?.parent, bone, `${config.expectedEndName} is a direct child of ${config.expectedBoneName}`);
+    if (config.endPath) {
+      const end = resolvePath(root, config.endPath);
+      assert.equal(end?.name, config.expectedEndName);
+      assert.equal(end?.parent, bone, 'mapped endpoint must be a direct child');
+    } else {
+      assert.ok(config.referenceDirection && Math.hypot(...config.referenceDirection) > 0);
+    }
   }
 
   const retargeter = new Retargeter(root, bones, configs);
   assert.deepEqual(retargeter.warnings, []);
-  assert.equal(retargeter.debug().length, 2);
+  assert.equal(retargeter.debug().length, 14);
   const original = new Map(bones.filter((entry) => entry.name.endsWith('UpperArm')).map((entry) => [entry.name, entry.initialQuaternion.clone()]));
   for (let step = 1; step <= 100; step++) {
     const now = step * 1000 / 60;
@@ -90,6 +94,17 @@ test('delivery robot.glb loads as a 17-joint skinned model and its exported mapp
   }
   assert.ok(boneByName.get('LeftUpperArm')!.bone.quaternion.angleTo(original.get('LeftUpperArm')!) > 0.5);
   assert.ok(boneByName.get('RightUpperArm')!.bone.quaternion.angleTo(original.get('RightUpperArm')!) < 1e-5);
+  for (let step = 101; step <= 300; step++) {
+    const now = step * 1000 / 60;
+    retargeter.accept(simulatedPose('full', now, step), now);
+    retargeter.update(now, 1 / 60);
+  }
+  assert.equal(retargeter.debug().filter(d => d.state === 'tracking').length, 14);
+  for (const name of ['Spine', 'Neck', 'LeftForearm', 'RightForearm', 'LeftUpperLeg', 'RightUpperLeg', 'LeftLowerLeg', 'RightLowerLeg', 'LeftHand', 'RightHand', 'LeftFoot', 'RightFoot']) {
+    const entry = boneByName.get(name)!;
+    assert.ok(entry.bone.quaternion.angleTo(entry.initialQuaternion) > 0.01, name + ' must move');
+  }
+  assert.ok(retargeter.debug().every(d => d.actual.every(Number.isFinite)));
   retargeter.dispose();
   disposeObject(root);
 });

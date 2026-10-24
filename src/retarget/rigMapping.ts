@@ -1,6 +1,7 @@
-import * as THREE from 'three';
+﻿import * as THREE from 'three';
 import type { BoneEntry } from '../robot/bones';
-import type { RigBindingConfig } from './types';
+import type { BodySegment, RigBindingConfig } from './types';
+import { sourceFor } from './sourceMapping';
 
 export function objectPath(root: THREE.Object3D, child: THREE.Object3D): number[] | undefined {
   const path: number[] = [];
@@ -20,22 +21,34 @@ export function resolvePath(root: THREE.Object3D, path: readonly number[]): THRE
 }
 /** This preset is only for our authored procedural asset. Unknown GLBs require explicit configuration. */
 export function fallbackMapping(root: THREE.Object3D, bones: readonly BoneEntry[]): RigBindingConfig[] {
-  return (['left', 'right'] as const).flatMap((side) => {
+  const result: RigBindingConfig[] = [];
+  const add = (name: string, side: RigBindingConfig['side'], segment: BodySegment, childName?: string,
+    referenceDirection?: readonly [number, number, number], maxDegrees = 150) => {
+    const matches = bones.filter(entry => entry.name === name);
+    if (matches.length !== 1) return;
+    const bonePath = objectPath(root, matches[0]!.bone);
+    if (!bonePath) return;
+    const child = childName ? bones.filter(entry => entry.name === childName) : [];
+    const endPath = child.length === 1 ? objectPath(root, child[0]!.bone) : undefined;
+    if (childName && (!endPath || child[0]!.bone.parent !== matches[0]!.bone)) return;
+    if (!endPath && !referenceDirection) return;
+    const source = sourceFor(side, segment);
+    result.push({ side, segment, sourceStart: source.start, sourceEnd: source.end, bonePath,
+      endPath, expectedBoneName: name, expectedEndName: endPath ? childName : undefined, referenceDirection,
+      maxSwingRadians: THREE.MathUtils.degToRad(maxDegrees), axisCorrection: [0, 0, 0, 1] });
+  };
+  add('Spine', 'center', 'torso', 'Chest', undefined, 65);
+  add('Neck', 'center', 'neck', 'Head', undefined, 75);
+  for (const side of ['left', 'right'] as const) {
     const label = side === 'left' ? 'Left' : 'Right';
-    const arm = bones.filter(e => e.name === `${label}UpperArm`);
-    const end = bones.filter(e => e.name === `${label}Forearm`);
-    if (arm.length !== 1 || end.length !== 1) return [];
-    const bonePath = objectPath(root, arm[0].bone), endPath = objectPath(root, end[0].bone);
-    if (!bonePath || !endPath) return [];
-    const result: RigBindingConfig[] = [{ side, segment: 'upperArm', bonePath, endPath, expectedBoneName: arm[0].bone.name, expectedEndName: end[0].bone.name,
-      maxSwingRadians: THREE.MathUtils.degToRad(160), axisCorrection: [0, 0, 0, 1] }];
-    const hand = bones.filter(e => e.name === label + 'Hand');
-    const handPath = hand.length === 1 ? objectPath(root, hand[0].bone) : undefined;
-    if (handPath) result.push({ side, segment: 'forearm', enabled: false, bonePath: endPath, endPath: handPath,
-      expectedBoneName: end[0].bone.name, expectedEndName: hand[0].bone.name,
-      maxSwingRadians: THREE.MathUtils.degToRad(140), axisCorrection: [0, 0, 0, 1] });
-    return result;
-  });
+    add(`${label}UpperArm`, side, 'upperArm', `${label}Forearm`, undefined, 160);
+    add(`${label}Forearm`, side, 'forearm', `${label}Hand`, undefined, 155);
+    add(`${label}Hand`, side, 'hand', undefined, [0, -1, 0], 120);
+    add(`${label}UpperLeg`, side, 'upperLeg', `${label}LowerLeg`, undefined, 115);
+    add(`${label}LowerLeg`, side, 'lowerLeg', `${label}Foot`, undefined, 145);
+    add(`${label}Foot`, side, 'foot', undefined, [0, 0, 1], 85);
+  }
+  return result;
 }
 
 const scaleX = new THREE.Vector3(), scaleY = new THREE.Vector3(), scaleZ = new THREE.Vector3();

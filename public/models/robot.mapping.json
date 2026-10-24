@@ -1,12 +1,87 @@
 {
-  "version": 1,
+  "version": 2,
   "asset": "robot.glb",
   "generatedBy": "scripts/generate-robot-glb.mjs",
   "bindings": [
     {
+      "side": "center",
+      "segment": "torso",
+      "enabled": true,
+      "sourceStart": [
+        23,
+        24
+      ],
+      "sourceEnd": [
+        11,
+        12
+      ],
+      "bonePath": [
+        0,
+        0,
+        0
+      ],
+      "expectedBoneName": "Spine",
+      "endPath": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "expectedEndName": "Chest",
+      "maxSwingRadians": 1.1344640137963142,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "center",
+      "segment": "neck",
+      "enabled": true,
+      "sourceStart": [
+        11,
+        12
+      ],
+      "sourceEnd": [
+        0
+      ],
+      "bonePath": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "expectedBoneName": "Neck",
+      "endPath": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "expectedEndName": "Head",
+      "maxSwingRadians": 1.3089969389957472,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
       "side": "left",
       "segment": "upperArm",
       "enabled": true,
+      "sourceStart": [
+        11
+      ],
+      "sourceEnd": [
+        13
+      ],
       "bonePath": [
         0,
         0,
@@ -14,6 +89,7 @@
         0,
         2
       ],
+      "expectedBoneName": "LeftUpperArm",
       "endPath": [
         0,
         0,
@@ -22,7 +98,6 @@
         2,
         0
       ],
-      "expectedBoneName": "LeftUpperArm",
       "expectedEndName": "LeftForearm",
       "maxSwingRadians": 2.792526803190927,
       "axisCorrection": [
@@ -35,7 +110,13 @@
     {
       "side": "left",
       "segment": "forearm",
-      "enabled": false,
+      "enabled": true,
+      "sourceStart": [
+        13
+      ],
+      "sourceEnd": [
+        15
+      ],
       "bonePath": [
         0,
         0,
@@ -44,6 +125,7 @@
         2,
         0
       ],
+      "expectedBoneName": "LeftForearm",
       "endPath": [
         0,
         0,
@@ -53,9 +135,137 @@
         0,
         0
       ],
-      "expectedBoneName": "LeftForearm",
       "expectedEndName": "LeftHand",
-      "maxSwingRadians": 2.443460952792061,
+      "maxSwingRadians": 2.705260340591211,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "left",
+      "segment": "hand",
+      "enabled": true,
+      "sourceStart": [
+        15
+      ],
+      "sourceEnd": [
+        17,
+        19
+      ],
+      "bonePath": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0
+      ],
+      "expectedBoneName": "LeftHand",
+      "referenceDirection": [
+        0,
+        -1,
+        0
+      ],
+      "maxSwingRadians": 2.0943951023931953,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "left",
+      "segment": "upperLeg",
+      "enabled": true,
+      "sourceStart": [
+        23
+      ],
+      "sourceEnd": [
+        25
+      ],
+      "bonePath": [
+        0,
+        0,
+        2
+      ],
+      "expectedBoneName": "LeftUpperLeg",
+      "endPath": [
+        0,
+        0,
+        2,
+        0
+      ],
+      "expectedEndName": "LeftLowerLeg",
+      "maxSwingRadians": 2.007128639793479,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "left",
+      "segment": "lowerLeg",
+      "enabled": true,
+      "sourceStart": [
+        25
+      ],
+      "sourceEnd": [
+        27
+      ],
+      "bonePath": [
+        0,
+        0,
+        2,
+        0
+      ],
+      "expectedBoneName": "LeftLowerLeg",
+      "endPath": [
+        0,
+        0,
+        2,
+        0,
+        0
+      ],
+      "expectedEndName": "LeftFoot",
+      "maxSwingRadians": 2.530727415391778,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "left",
+      "segment": "foot",
+      "enabled": true,
+      "sourceStart": [
+        27
+      ],
+      "sourceEnd": [
+        31
+      ],
+      "bonePath": [
+        0,
+        0,
+        2,
+        0,
+        0
+      ],
+      "expectedBoneName": "LeftFoot",
+      "referenceDirection": [
+        0,
+        0,
+        1
+      ],
+      "maxSwingRadians": 1.4835298641951802,
       "axisCorrection": [
         0,
         0,
@@ -67,6 +277,12 @@
       "side": "right",
       "segment": "upperArm",
       "enabled": true,
+      "sourceStart": [
+        12
+      ],
+      "sourceEnd": [
+        14
+      ],
       "bonePath": [
         0,
         0,
@@ -74,6 +290,7 @@
         0,
         1
       ],
+      "expectedBoneName": "RightUpperArm",
       "endPath": [
         0,
         0,
@@ -82,7 +299,6 @@
         1,
         0
       ],
-      "expectedBoneName": "RightUpperArm",
       "expectedEndName": "RightForearm",
       "maxSwingRadians": 2.792526803190927,
       "axisCorrection": [
@@ -95,7 +311,13 @@
     {
       "side": "right",
       "segment": "forearm",
-      "enabled": false,
+      "enabled": true,
+      "sourceStart": [
+        14
+      ],
+      "sourceEnd": [
+        16
+      ],
       "bonePath": [
         0,
         0,
@@ -104,6 +326,7 @@
         1,
         0
       ],
+      "expectedBoneName": "RightForearm",
       "endPath": [
         0,
         0,
@@ -113,9 +336,137 @@
         0,
         0
       ],
-      "expectedBoneName": "RightForearm",
       "expectedEndName": "RightHand",
-      "maxSwingRadians": 2.443460952792061,
+      "maxSwingRadians": 2.705260340591211,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "right",
+      "segment": "hand",
+      "enabled": true,
+      "sourceStart": [
+        16
+      ],
+      "sourceEnd": [
+        18,
+        20
+      ],
+      "bonePath": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "expectedBoneName": "RightHand",
+      "referenceDirection": [
+        0,
+        -1,
+        0
+      ],
+      "maxSwingRadians": 2.0943951023931953,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "right",
+      "segment": "upperLeg",
+      "enabled": true,
+      "sourceStart": [
+        24
+      ],
+      "sourceEnd": [
+        26
+      ],
+      "bonePath": [
+        0,
+        0,
+        1
+      ],
+      "expectedBoneName": "RightUpperLeg",
+      "endPath": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "expectedEndName": "RightLowerLeg",
+      "maxSwingRadians": 2.007128639793479,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "right",
+      "segment": "lowerLeg",
+      "enabled": true,
+      "sourceStart": [
+        26
+      ],
+      "sourceEnd": [
+        28
+      ],
+      "bonePath": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "expectedBoneName": "RightLowerLeg",
+      "endPath": [
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "expectedEndName": "RightFoot",
+      "maxSwingRadians": 2.530727415391778,
+      "axisCorrection": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "side": "right",
+      "segment": "foot",
+      "enabled": true,
+      "sourceStart": [
+        28
+      ],
+      "sourceEnd": [
+        32
+      ],
+      "bonePath": [
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "expectedBoneName": "RightFoot",
+      "referenceDirection": [
+        0,
+        0,
+        1
+      ],
+      "maxSwingRadians": 1.4835298641951802,
       "axisCorrection": [
         0,
         0,

@@ -1,7 +1,7 @@
 # Robot Studio · 机器人动作实验室
 
 基于 Vite + TypeScript + Three.js 的机器人展示与骨骼调试工作台。
-已实现机器人工作台、手机端 MediaPipe 姿态识别、双上臂动作映射和跨设备 WebSocket 实时姿态转发。摄像头画面只在手机本地处理，中继只转发关键点数据。
+已实现机器人工作台、手机端 MediaPipe 姿态识别、实际 GLB 的全身动作映射和跨设备 WebSocket 实时姿态转发。摄像头画面只在手机本地处理，中继只转发关键点数据。
 
 展示地址：[打开 Robot Studio](https://121.199.30.133/) · [手机姿态识别](https://121.199.30.133/pose.html) · [机器人动作映射](https://121.199.30.133/mapping.html)
 
@@ -25,7 +25,7 @@ npm run dev
 ## 模型与骨骼
 
 将有使用授权的 GLB 文件放在 `public/models/robot.glb`，刷新页面即可加载。
-模型会等比例缩放、水平居中并贴合地面。当前仓库没有附带第三方 GLB。
+模型会等比例缩放、水平居中并贴合地面。仓库已附带本项目生成的 `robot.glb`：17 根骨骼、真实蒙皮网格和专属全身映射配置，可直接使用；运行 `npm run generate:model` 可重新生成。
 如果文件缺失、请求失败、15 秒请求超时、文件无效或解析失败，会显示原因并启用内置备用机器人。
 备用模型由基础几何体和 17 个实际 THREE.Bone 节点构成，可直接验证关节运动。
 
@@ -170,31 +170,34 @@ npm run test:pose
 
 第二阶段实际检查和待验收项目见 [第二阶段验证记录](docs/stage-02-verification.md)。模拟视频与桌面运行结果不代表已完成真机摄像头、指示灯、温升或移动浏览器内存验收。
 
-## 第三阶段：机器人动作映射
+## 第三阶段：机器人全身动作映射
 
-打开 `/mapping.html`，默认使用模拟姿态，不申请相机权限。选择“只抬左臂”“只抬右臂”“双臂外展”或“双臂前伸”检查动作；也可选低置信度、缺失点、异常坐标与向上限位场景。
+打开 `/mapping.html`，默认模拟姿态，不申请相机权限。选择“全身动作”或“迈步动作”，可同时检查躯干、头颈、双臂、双腿、双手和双脚；也保留独立抬臂、前伸、低置信度、缺失点与限位测试。
 
-切换输入方式为“摄像头识别”，点击启动后使用本机视频推理驱动同页机器人。默认后摄；设备开放相应能力时可切换具体镜头和原生变焦。前摄只镜像预览，输入的解剖左右保持不变。跨设备方式见下方第五阶段说明。
+当前交付的 `robot.glb` 有 **17 根实际骨骼，启用 14 组方向映射**。躯干驱动 Spine，头颈驱动 Neck，每侧各驱动 UpperArm、Forearm、Hand、UpperLeg、LowerLeg、Foot；Chest 与 Head 继承父节点，Hips 保持锚定。映射表、限位、已验证范围与限制见 [全身映射说明](docs/full-body-mapping.md)。
 
-暂停跟随会冻结当前旋转，重置会恢复模型初始位置、四元数和缩放并暂停；点击继续跟随后重新驱动。摄像头停止、切源或后台切换时会清理采集；后台后跟随保持暂停，需要手动继续。观察面板显示实际骨骼、世界坐标置信度、方向、目标/实际四元数及跟踪/保持/回中状态。绿色箭头表示输入，灰色表示实际臂向。
+切换“本机摄像头”并点击启动，即可本页识别并驱动。默认后摄；具体镜头选择和原生变焦依赖设备开放能力。前摄只镜像预览，不交换解剖左右。拍摄时让头部到脚尖完整入镜，避免肘、膝和手脚遮挡。手机驱动电脑的步骤见下方。
 
-当前内置模型绑定：11→13 对应 LeftUpperArm→LeftForearm，12→14 对应 RightUpperArm→RightForearm。前臂到手部的实际配置也已记录，默认禁用，本版只驱动上臂。世界坐标按 `(x,-y,-z)` 转入场景，父旋转参与求解，使用最小摆动、固定扭转约定、最大 160° 摆角和时间相关 SLERP；单侧无有效新观察超过 250ms 后平滑回中。不宣称恢复肩关节轴向扭转、精确关节角或完整人体动作。
+暂停会冻结当前姿态；重置恢复所有骨骼初始变换并暂停，点击继续跟随后重新驱动。手机模式暂停/重置不结束正在运行的采集会话，无需在手机重新启动识别。本机相机停止、切源或后台时会释放相机；电脑后台后保持暂停，需手动继续。手机停止采集或断线后，受影响骨骼平滑回中。
 
-当前没有交付用 `robot.glb`，内置程序化骨架验证不算实际 GLB 验收。外部 GLB 的动作映射须附带 `public/models/robot.mapping.json`，缺失或不匹配时显示警告并保留模型浏览，不猜测名称。格式为 `{ "version": 1, "bindings": [...] }`；每项包括 `side`（left/right）、`segment`（upperArm/forearm）、`enabled`、`bonePath`、`endPath`、实际 `expectedBoneName` / `expectedEndName`、弧度 `maxSwingRadians` 和单位四元数 `axisCorrection`（xyzw）。
+骨架按钮可显示绿色输入/灰色实际方向箭头，观察面板展示全部 14 组的方向、置信度、四元数、限位及跟踪/保持/回中状态。输入按 `(dx,-dy,-dz)` 转入场景，父节点优先求解、考虑真实父旋转，最小摆动加时间相关 SLERP 平滑；无有效观察超过 250ms 后回中。
 
-`bonePath` / `endPath` 为从导入模型根节点逐层走过的 `children` 数组索引，不能从名字或临时 UUID 猜测；名称和父子关系也会核验。当前支持直接相连的肩肘链和正的均匀缩放变换；负缩放、非均匀缩放、剪切及不支持的链会被停用。上臂参考方向和初始旋转取自实际模型；配置中的前臂段目前不会启用，待增加肘关节专属求解后接入。
+外部 GLB 必须带专属 `public/models/robot.mapping.json`；路径、骨骼名称、直接父子关系及变换均会核验，不根据名称猜映射。当前格式为 `{ "version": 2, "bindings": [...] }`，兼容旧版 v1 手臂配置。v2 支持中心段与四肢、虚拟中心点 `sourceStart/sourceEnd`，无子骨骼的手脚使用明确的本地 `referenceDirection`。只支持正的均匀缩放，不支持的链会停用并提示。
 
-新增模块：`src/retarget/`（适配、配置、模拟、求解、调试）、`src/mapping/`（页面）、`src/mobile/capturePanel.ts`（与阶段二共享的采集面板）。
+**范围限制：** 当前是方向近似，不是精确动作捕捉。头颈按鼻点近似朝向；不恢复人体轴向扭转/转身朝向，不包含手指、根位移、脚底锁定或地面 IK，迈步可能抬脚/穿地，不等价于物理行走。
+
+`src/retarget/` 负责来源映射、配置、求解、模拟与调试；`src/mapping/` 负责页面与输入源协调；手机和本机共享 `src/mobile/capturePanel.ts`。
 
 ```powershell
+npm run build
+node deploy/server.mjs
+# 另一个终端；本机生产页面与中继地址
+$env:TEST_URL = 'http://127.0.0.1:8082'
 npm run test:retarget
-# 可选：沿用上文的官方人体测试图片，执行桌面真实模型驱动和 5 分钟采样
-$env:POSE_PERSON = '1'
-$env:MAPPING_DURATION = '300'
-npm run test:retarget
+npm run test:full-body
 ```
 
-新增自动化结果输出到 `artifacts/retarget-browser-results.json`，截图为 `mapping-desktop.png`、`mapping-mobile.png` 和 `mapping-camera.png`。桌面模拟相机和合成 GLB 夹具均不能替代实际手机和实际交付 GLB 验收。
+`test:retarget` 覆盖实际 GLB 的 14 组动作/回中/重置、模拟摄像头与缩放、移动布局及外部配置错误。`test:full-body` 用模拟手机发送端经过真实配对和 WebSocket 中继驱动生产页面，覆盖全部关节响应、暂停/重置后沿用会话、停止回中与新会话序号重置。报告和截图保存在 `artifacts/`（不提交版本库）。这些结果不代替真实手机相机、真实人体精度或长期稳定性验收。
 
 ## 第五阶段：跨设备集成
 
@@ -211,4 +214,4 @@ npm run dev
 
 生产部署通过同源 HTTPS/WSS 提供页面、配对 API 和 WebSocket，不开放单独的公网 WS 端口。断线会清除电脑端旧姿态并有限重连；相机停止或手机离线会结束 capture session。配对凭据只放在手机链接片段中，页面读取后立即从地址栏移除。
 
-`npm test` 覆盖 relay 鉴权与房间隔离、capture/session、断线状态、心跳、姿态校验和 RemotePoseBuffer 时序；`npm run test:browser`、`npm run test:pose`、`npm run test:retarget` 分别覆盖工作台、姿态采集及映射页面。自动化不等价于真实手机后置摄像头、真实人体跨设备动作、实际交付 GLB、10 分钟真机稳定性或端到端 P95 验收；这些项目须按 [第五阶段需求与验收文档](05_端到端集成与验收.md) 记录设备、网络、时长和测量证据。
+`npm test` 覆盖 relay 鉴权与房间隔离、capture/session、断线状态、心跳、姿态校验和 RemotePoseBuffer 时序；`npm run test:browser`、`npm run test:pose`、`npm run test:retarget` 分别覆盖工作台、姿态采集及映射页面，`npm run test:full-body` 覆盖模拟手机经真实中继驱动实际 GLB 的全身链路。自动化不等价于真实手机后置摄像头、真实人体跨设备动作、10 分钟真机稳定性或端到端 P95 验收；这些项目须按 [第五阶段需求与验收文档](05_端到端集成与验收.md) 记录设备、网络、时长和测量证据。

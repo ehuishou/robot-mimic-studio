@@ -240,28 +240,26 @@ function findNodePath(gltf, name) {
 }
 
 function makeMapping(gltf) {
-  const armBindings = [];
+  const bindings = [];
+  const add = (name, side, segment, start, end, child, referenceDirection, degrees) => {
+    bindings.push({ side, segment, enabled: true, sourceStart: start, sourceEnd: end,
+      bonePath: findNodePath(gltf, name), expectedBoneName: name,
+      ...(child ? { endPath: findNodePath(gltf, child), expectedEndName: child } : { referenceDirection }),
+      maxSwingRadians: THREE.MathUtils.degToRad(degrees), axisCorrection: [0, 0, 0, 1] });
+  };
+  add('Spine', 'center', 'torso', [23, 24], [11, 12], 'Chest', undefined, 65);
+  add('Neck', 'center', 'neck', [11, 12], [0], 'Head', undefined, 75);
   for (const side of ['left', 'right']) {
     const label = side === 'left' ? 'Left' : 'Right';
-    const upperArm = `${label}UpperArm`;
-    const forearm = `${label}Forearm`;
-    const hand = `${label}Hand`;
-    const upperArmPath = findNodePath(gltf, upperArm);
-    const forearmPath = findNodePath(gltf, forearm);
-    const handPath = findNodePath(gltf, hand);
-    armBindings.push({ side, segment: 'upperArm', enabled: true, bonePath: upperArmPath, endPath: forearmPath,
-      expectedBoneName: upperArm, expectedEndName: forearm, maxSwingRadians: 2.792526803190927,
-      axisCorrection: [0, 0, 0, 1] });
-    armBindings.push({ side, segment: 'forearm', enabled: false, bonePath: forearmPath, endPath: handPath,
-      expectedBoneName: forearm, expectedEndName: hand, maxSwingRadians: 2.443460952792061,
-      axisCorrection: [0, 0, 0, 1] });
+    const i = side === 'left' ? 0 : 1;
+    add(label + 'UpperArm', side, 'upperArm', [11 + i], [13 + i], label + 'Forearm', undefined, 160);
+    add(label + 'Forearm', side, 'forearm', [13 + i], [15 + i], label + 'Hand', undefined, 155);
+    add(label + 'Hand', side, 'hand', [15 + i], [17 + i, 19 + i], undefined, [0, -1, 0], 120);
+    add(label + 'UpperLeg', side, 'upperLeg', [23 + i], [25 + i], label + 'LowerLeg', undefined, 115);
+    add(label + 'LowerLeg', side, 'lowerLeg', [25 + i], [27 + i], label + 'Foot', undefined, 145);
+    add(label + 'Foot', side, 'foot', [27 + i], [31 + i], undefined, [0, 0, 1], 85);
   }
-  return {
-    version: 1,
-    asset: 'robot.glb',
-    generatedBy: 'scripts/generate-robot-glb.mjs',
-    bindings: armBindings,
-  };
+  return { version: 2, asset: 'robot.glb', generatedBy: 'scripts/generate-robot-glb.mjs', bindings };
 }
 
 await mkdir(modelsDirectory, { recursive: true });

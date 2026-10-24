@@ -52,6 +52,7 @@ try {
   assert.equal(await page.locator('#mapping-viewport canvas').count(), 1);
   assert.equal(await page.locator('#rig-source').textContent(), 'robot.glb · 实际骨架');
   assert.equal(await page.locator('.arm-debug').count(), 2);
+  assert.equal(await page.locator('.binding-debug').count(), 14);
   assert.match(await page.locator('#mapping-warning').textContent(), /已读取 GLB 骨架及专属映射配置/);
   assert.match(await page.locator('#rig-tree').textContent(), /LeftUpperArm.*Chest/);
   assert.equal(await page.evaluate(() => window.__constraints.length), 0);
@@ -75,6 +76,21 @@ try {
     assert.ok((await states()).every(s => s.q.every(Number.isFinite)));
   }
   report.scenarios.push('pause freezes rotation, reset returns exact rest, loss/invalid/missing input stays finite and recovers');
+  for (const mode of ['full', 'walk']) {
+    await page.locator('#simulation').selectOption(mode);
+    await page.waitForFunction(() => [...document.querySelectorAll('.binding-debug')].length === 14 && [...document.querySelectorAll('.binding-debug')].every(node => node.dataset.state === 'tracking'));
+    await page.waitForTimeout(900);
+    const joints = await page.locator('.binding-debug').evaluateAll(nodes => nodes.map(node => ({ segment: node.dataset.segment, q: JSON.parse(node.dataset.actual) })));
+    assert.ok(joints.every(joint => joint.q.every(Number.isFinite)));
+    assert.ok(joints.every(joint => Math.hypot(...joint.q.slice(0, 3)) > 0.005), 'torso, neck, limbs, hands and feet all respond');
+  }
+  await page.screenshot({ path: fileURLToPath(new URL('mapping-full-body.png', artifacts)), fullPage: true });
+  await page.locator('#simulation').selectOption('missing');
+  await page.waitForFunction(() => [...document.querySelectorAll('.binding-debug')].every(node => node.dataset.state === 'rest'));
+  await page.locator('#reset-mapping').click();
+  assert.ok(await page.locator('.binding-debug').evaluateAll(nodes => nodes.every(node => Math.hypot(...JSON.parse(node.dataset.actual).slice(0, 3)) < 1e-5)));
+  await page.locator('#toggle-follow').click();
+  report.scenarios.push('actual robot.glb: all 14 full-body and step directions track, remain finite, recover after loss, and reset exactly');
   await page.locator('#simulation').selectOption('left'); await stable('left');
   await page.screenshot({ path: fileURLToPath(new URL('mapping-desktop.png', artifacts)), fullPage: true });
   for (const width of [390, 320]) {

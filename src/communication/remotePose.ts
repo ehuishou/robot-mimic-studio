@@ -41,6 +41,9 @@ export class RemotePoseBuffer {
     return value;
   }
 
+  // Pausing the viewer must not invalidate the phone's still-running capture session.
+  discardPending(): void { this.latest = undefined; }
+
   clear(): void {
     this.activeSession = undefined;
     this.latest = undefined;
