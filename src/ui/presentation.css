@@ -5,7 +5,7 @@
 .presentation-toggle:focus-visible{outline:2px solid #b7eb7f;outline-offset:3px}
 html.presentation-open{overflow:hidden}
 .presentation-expanded{position:fixed!important;inset:0!important;width:100%!important;height:100vh!important;height:100dvh!important;min-height:0!important;max-height:none!important;margin:0!important;border:0!important;border-radius:0!important;z-index:1000!important;background:#141a18}
-.presentation-expanded .presentation-toggle{background:#b7eb7f;color:#17251b;border-color:#b7eb7f;min-height:40px}
+.presentation-expanded .presentation-toggle,.presentation-expanded .presentation-toggle:hover{background:#b7eb7f;color:#17251b;border-color:#b7eb7f;min-height:40px}
 .robot-presentation{position:relative}
 .robot-presentation>.presentation-controls{position:absolute;top:14px;right:14px;z-index:2}
 .robot-presentation.presentation-expanded #mapping-viewport{position:absolute;inset:0;height:100%;width:100%}
