@@ -147,3 +147,11 @@ Vite `/api` 与 `/ws` 代理将 Host 和 Origin 改写至本机 relay；本轮�
 - Vite 开发代理冒烟：同源 `/api/rooms` 成功建房；mobile/viewer 两个浏览器式 WebSocket 客户端完成认证、peer 状态和 capture 转发。
 - 未执行真实手机摄像头/人体动作、真实 GLB、600 秒持续运行、端到端 P95 测量及公网发布复验；不得据当前桌面证据勾选这些验收项。
 - 本轮已更新 README、Vite 代理和 relay 测试。阶段五需求文档保持原样。
+
+## 10. 公网发布复验（2026-10-24）
+
+- `deploy/deploy.ps1` 使用 release `20261024-131156` 完成上传，远端 `robot-studio` 状态为 `active`。
+- `https://121.199.30.133/`、`/pose.html`、`/mapping.html` 均在正常 TLS 校验下返回 HTTP 200；未使用跳过证书校验。
+- `https://121.199.30.133/version.json` 显示部署 commit `6dea12f3cc6d21d569dc20f56ad51db043337a66`。
+- 公网 WSS 双角色冒烟通过：mobile/viewer 完成 hello 认证，viewer 收到 capture started；不代表真实手机人体动作验收。
+- GitHub `origin/main` 推送未完成：2026-10-24 两次连接 `github.com:443` 分别被重置和超时。本地 commit 已保留，待网络恢复后执行 `git push origin main`。
