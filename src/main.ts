@@ -6,6 +6,7 @@ import { resetBones, rotateBone } from './robot/bones';
 import type { BoneEntry } from './robot/bones';
 import { renderLayout } from './ui/layout';
 import { icon } from './ui/icons';
+import { mountPresentation } from './ui/presentation';
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
   const result = document.getElementById(id);
@@ -15,6 +16,7 @@ function element<T extends HTMLElement = HTMLElement>(id: string): T {
 
 renderLayout(element('app'));
 const lifetime = new AbortController();
+mountPresentation(element('robot-presentation'), element('presentation-controls'), lifetime.signal);
 let scene: StudioScene | undefined;
 let model: RobotModel | undefined;
 let selected: BoneEntry | undefined;

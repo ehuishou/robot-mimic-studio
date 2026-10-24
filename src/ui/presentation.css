@@ -1,0 +1,12 @@
+.presentation-controls{display:flex;align-items:center;gap:10px}
+.presentation-toggle{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:7px 10px;border:1px solid #526747;border-radius:7px;background:#202c23;color:#dce9d5;font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;pointer-events:auto}
+.presentation-toggle .icon{width:16px;height:16px;pointer-events:none}
+.presentation-toggle:hover{background:#30402b;color:#b7eb7f}
+.presentation-toggle:focus-visible{outline:2px solid #b7eb7f;outline-offset:3px}
+html.presentation-open{overflow:hidden}
+.presentation-expanded{position:fixed!important;inset:0!important;width:100%!important;height:100vh!important;height:100dvh!important;min-height:0!important;max-height:none!important;margin:0!important;border:0!important;border-radius:0!important;z-index:1000!important;background:#141a18}
+.presentation-expanded .presentation-toggle{background:#b7eb7f;color:#17251b;border-color:#b7eb7f;min-height:40px}
+.robot-presentation{position:relative}
+.robot-presentation>.presentation-controls{position:absolute;top:14px;right:14px;z-index:2}
+.robot-presentation.presentation-expanded #mapping-viewport{position:absolute;inset:0;height:100%;width:100%}
+@media(max-width:540px){.presentation-controls{gap:6px}.presentation-toggle{padding:7px;font-size:11px}}

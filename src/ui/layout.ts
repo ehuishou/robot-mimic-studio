@@ -11,8 +11,8 @@ export function renderLayout(container: HTMLElement): void {
     <main class="workspace">
       <section class="main-column">
         <div class="page-heading"><div><div class="eyebrow">ROBOT MOTION LAB</div><h1>让动作，有迹可循<span>。</span></h1><p>从一个姿态开始，探索人与机器的连接。</p></div><div class="heading-mark">01<span>/ 05</span></div></div>
-        <section class="viewport-card" aria-label="机器人展示区">
-          <div class="viewport-top"><div class="viewport-title">${icon('cube')}<span>三维视窗</span><span class="live-dot"></span><span class="small-label">LIVE</span></div><span id="source-badge" class="source-badge">准备模型</span></div>
+        <section id="robot-presentation" class="viewport-card" aria-label="机器人展示区">
+          <div class="viewport-top"><div class="viewport-title">${icon('cube')}<span>三维视窗</span><span class="live-dot"></span><span class="small-label">LIVE</span></div><div id="presentation-controls" class="presentation-controls"><span id="source-badge" class="source-badge">准备模型</span></div></div>
           <div id="viewport" class="viewport"></div>
           <div class="scene-label"><span class="crosshair">+</span><div><span id="model-label">ROBOT / INITIALIZING</span><small id="model-subtitle">正在准备三维场景</small></div></div>
           <div id="loading" class="loading"><span class="spinner"></span><span>正在加载机器人模型…</span></div>

@@ -3,6 +3,8 @@
   cube: '<path d="m12 3 9 5v9l-9 5-9-5V8l9-5ZM3 8l9 5 9-5M12 13v9"/>',
   bone: '<path d="M7.5 5A2.5 2.5 0 1 0 3 7c-1 3 2 5 4 3l7 7c-2 2 0 5 3 4a2.5 2.5 0 1 0 2-4.5L11 9c2-2 0-5-3-4Z"/>',
   reset: '<path d="M3 11a9 9 0 1 1 2.7 7M3 4v7h7"/>',
+  expand: '<path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/>',
+  collapse: '<path d="M3 8h5V3M21 8h-5V3M16 21v-5h5M8 21v-5H3"/>',
   focus: '<path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/><circle cx="12" cy="12" r="4"/>',
   grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
   rotate: '<path d="M20 7a9 9 0 1 0 1 8M20 2v6h-6"/><path d="m10 8 6 4-6 4V8Z"/>',

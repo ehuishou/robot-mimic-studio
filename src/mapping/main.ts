@@ -1,4 +1,5 @@
 import { repositoryLink } from '../ui/repositoryLink';
+import { mountPresentation } from '../ui/presentation';
 import '../mobile/style.css';
 import './style.css';
 import * as THREE from 'three';
@@ -25,7 +26,7 @@ el('app').innerHTML = `
   <section class="mapping-heading"><div><div class="eyebrow">HUMAN → ROBOT / MOTION MAPPING</div><h1>让动作，产生共鸣<span>。</span></h1><p>从你的动作，到机器人的全身共鸣。</p></div><span class="chapter">04<small>/ 05</small></span></section>
   <div class="mapping-grid">
     <section class="robot-panel"><div class="panel-bar"><strong>动作视窗 <small>LIVE RETARGET</small></strong><span id="mapping-fps">— FPS</span></div>
-      <div id="mapping-viewport" aria-label="机器人动作映射视窗"></div>
+      <div id="robot-presentation" class="robot-presentation"><div id="mapping-viewport" aria-label="机器人动作映射视窗"></div><div id="presentation-controls" class="presentation-controls"></div></div>
       <div class="model-caption"><span id="rig-source">正在加载模型…</span><span id="follow-status" role="status">准备中</span></div>
       <div class="follow-actions"><button id="toggle-follow" disabled>暂停跟随</button><button id="reset-mapping" disabled>重置姿势</button><button id="recenter-motion" disabled>重新定位</button><label><input id="foot-lock" type="checkbox" checked> 脚底锁定</label><button id="front-view">正面视角</button><button id="show-rig" aria-pressed="false">骨架与方向</button></div>
       <p class="mapping-help">显示骨架时，绿色箭头为输入方向，灰色箭头为实际骨骼方向。暂停可保持姿态；重置后点击继续跟随。</p>
@@ -47,6 +48,7 @@ el('app').innerHTML = `
 </main><footer class="mapping-footer"><span>ROBOT STUDIO / MOTION LAB</span><div class="footer-links"><span>STAGE 03</span>${repositoryLink()}</div></footer>`;
 
 const lifetime = new AbortController();
+mountPresentation(el('robot-presentation'), el('presentation-controls'), lifetime.signal);
 let scene: StudioScene | undefined, model: RobotModel | undefined, retargeter: Retargeter | undefined;
 let source: 'simulation' | 'camera' | 'remote' = 'simulation', paused = false, disposed = false;
 let latest: RetargetFrame | undefined, simSeq = 0, sampledAt = -Infinity;
