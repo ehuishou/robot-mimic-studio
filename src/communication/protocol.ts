@@ -1,3 +1,4 @@
+import type { ImageMotion } from '../retarget/types';
 import type { PosePoint } from '../pose/poseTypes';
 
 export const PROTOCOL_VERSION = 1;
@@ -14,6 +15,7 @@ export interface PoseMessage {
   timestamp: number;
   seq: number;
   landmarks: PosePoint[];
+  motion?: ImageMotion;
 }
 
 export interface HelloMessage { type: 'hello'; version: typeof PROTOCOL_VERSION; role: 'mobile' | 'viewer'; room: string; token: string }
@@ -66,10 +68,18 @@ export function normalizePoseLandmarks(points: readonly unknown[]): PosePoint[] 
   }
   return normalized;
 }
+export function isImageMotion(value: unknown): value is ImageMotion {
+  if (!value || typeof value !== 'object') return false;
+  const m = value as ImageMotion;
+  return hasExactKeys(value as Record<string, unknown>, ['x', 'y', 'scale'])
+    && [m.x, m.y, m.scale].every(Number.isFinite) && m.x >= 0 && m.x <= 1
+    && m.y >= 0 && m.y <= 1 && m.scale >= 0.04 && m.scale <= 0.8;
+}
 export function isPoseMessage(value: unknown, room?: string): value is PoseMessage {
   if (!value || typeof value !== 'object') return false;
   const frame = value as Partial<PoseMessage>;
-  return hasExactKeys(value as Record<string, unknown>, ['type', 'version', 'room', 'sessionId', 'timestamp', 'seq', 'landmarks'])
+  return hasExactKeys(value as Record<string, unknown>, ['type', 'version', 'room', 'sessionId', 'timestamp', 'seq', 'landmarks', ...(Object.hasOwn(value, 'motion') ? ['motion'] : [])])
+    && (!Object.hasOwn(value, 'motion') || isImageMotion(frame.motion))
     && frame.type === 'pose' && frame.version === PROTOCOL_VERSION && typeof frame.room === 'string' && (!room || frame.room === room)
     && typeof frame.sessionId === 'string' && SESSION_ID_PATTERN.test(frame.sessionId)
     && Number.isFinite(frame.timestamp) && Number.isSafeInteger(frame.seq) && frame.seq! >= 0

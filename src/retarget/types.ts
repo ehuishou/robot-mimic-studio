@@ -6,6 +6,7 @@ export interface RetargetFrame {
   seq: number;
   coordinateSpace: 'mediapipe-world';
   worldLandmarks: readonly PosePoint[];
+  motion?: ImageMotion;
 }
 export type ArmSide = 'left' | 'right';
 export type BodySide = ArmSide | 'center';
@@ -43,3 +44,7 @@ export interface BindingDebug {
   limited: boolean;
   lastValidMs: number | null;
 }
+
+/** Image-only summary; no pixels/video leave the device. Scale is shoulder-centre to hip-centre. */
+export interface ImageMotion { x: number; y: number; scale: number }
+export interface MotionRigConfig { version: 1; hipsPath: readonly number[]; expectedHipsName: string }

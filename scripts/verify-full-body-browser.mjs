@@ -17,6 +17,17 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1050 }, ig
 const report = { source: base, kind: 'synthetic-mobile-through-real-relay', scenarios: [], errors: [] };
 page.on('pageerror', error => report.errors.push(error.message));
 let mobile, timer, sending = false, seq = 0, sessionId = 'fullbody_session_01', mode = 'full';
+let yaw = 0, chestTwist = 0, lift = 0, imageMotion, jitter = false;
+const motionSnapshot = () => page.locator('#motion-status').evaluate(node => JSON.parse(node.dataset.motion));
+function wirePose(timestamp) {
+  const pose = simulatedPose(mode, timestamp, seq);
+  const landmarks = pose.worldLandmarks.map((p, i) => {
+    const angle = yaw + (i < 23 ? chestTwist : 0), c = Math.cos(angle), s = Math.sin(angle);
+    return { ...p, x: c * p.x - s * p.z, z: s * p.x + c * p.z, y: p.y - ([25, 27, 31].includes(i) ? lift : 0) };
+  });
+  const motion = imageMotion && { ...imageMotion, x: imageMotion.x + (jitter ? Math.sin(timestamp / 800) * 0.002 : 0) };
+  return { landmarks, ...(motion ? { motion } : {}) };
+}
 const snapshot = () => page.locator('.binding-debug').evaluateAll(nodes => nodes.map(node => ({ side: node.dataset.side, segment: node.dataset.segment, state: node.dataset.state, q: JSON.parse(node.dataset.actual) })));
 const waitTracking = () => page.waitForFunction(() => {
   const nodes = [...document.querySelectorAll('.binding-debug')];
@@ -60,7 +71,7 @@ try {
   timer = setInterval(() => {
     if (!sending || mobile.readyState !== WebSocket.OPEN) return;
     const timestamp = Date.now();
-    send({ type: 'pose', version: 1, room, sessionId, timestamp, seq: ++seq, landmarks: simulatedPose(mode, timestamp, seq).worldLandmarks });
+    send({ type: 'pose', version: 1, room, sessionId, timestamp, seq: ++seq, ...wirePose(timestamp) });
   }, 80);
   await waitTracking(); await page.waitForTimeout(1300);
   const full = await snapshot();
@@ -87,8 +98,81 @@ try {
   await page.locator('.debug-section details').first().evaluate(node => { node.open = false; });
   await page.screenshot({ path: fileURLToPath(new URL('full-body-websocket.png', artifacts)), fullPage: true });
   report.scenarios.push('capture stop recovers all joints; new capture session accepts reset sequence and drives whole body again');
+  // Exercise enhanced motion through the same authenticated mobile session, not a browser-only hook.
+  mode = 'neutral'; imageMotion = { x: 0.5, y: 0.6, scale: 0.25 };
+  await page.waitForFunction(() => {
+    const m = JSON.parse(document.getElementById('motion-status').dataset.motion || 'null');
+    return m?.calibrated && m.feet.every(f => f.locked && f.error < 0.008);
+  }, undefined, { timeout: 15000 });
+  await page.waitForTimeout(900);
+  const neutral = await snapshot();
+  assert.ok(Math.hypot(...neutral.find(j => j.segment === 'neck').q.slice(0, 3)) < 0.015, 'neutral face must not force permanent downward neck pitch');
+  const planted = await motionSnapshot(); jitter = true;
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(140);
+    const m = await motionSnapshot();
+    assert.ok(m.feet.every((f, j) => f.locked && f.error < 0.008 && Math.hypot(...f.anchor.map((v, k) => v - planted.feet[j].anchor[k])) < 1e-6));
+  }
+  report.scenarios.push('actual GLB neutral head remains upright; two-bone leg IK keeps both world anchors stable under image-motion jitter');
+  jitter = false; lift = 0.22;
+  await page.waitForFunction(() => !JSON.parse(document.getElementById('motion-status').dataset.motion).feet[0].locked);
+  lift = 0;
+  await page.locator('#foot-lock').uncheck();
+  assert.ok((await motionSnapshot()).feet.every(f => !f.locked));
+  for (const angle of [Math.PI / 2, Math.PI, Math.PI * 1.5, Math.PI * 2]) {
+    yaw = angle;
+    await page.waitForFunction(angle => {
+      const q = JSON.parse(document.getElementById('motion-status').dataset.motion).rotation;
+      return Math.abs(q[1] * Math.sin(angle / 2) + q[3] * Math.cos(angle / 2)) > 0.999;
+    }, angle, { timeout: 10000 });
+  }
+  chestTwist = 0.7; await page.waitForTimeout(1100);
+  const twist = await snapshot();
+  assert.ok(Math.hypot(...twist.find(j => j.segment === 'torso').q.slice(0, 3)) > 0.3, 'chest twists relative to hips');
+  assert.ok(Math.abs((await motionSnapshot()).yawDegrees) < 2, 'pelvis remains forward during isolated chest twist');
+  chestTwist = 0;
+  report.scenarios.push('lift releases the foot; lock toggle works; actual hips track 90/180/270/360 degrees across wrap; chest twists independently');
+  for (let step = 1; step <= 25; step++) { imageMotion.x = 0.5 + step * 0.002; await page.waitForTimeout(85); }
+  await page.waitForFunction(() => JSON.parse(document.getElementById('motion-status').dataset.motion).position[0] > 0.12);
+  await page.locator('#toggle-follow').click();
+  const frozenMotion = await motionSnapshot(); imageMotion.x = 0.56;
+  await page.waitForTimeout(400);
+  assert.deepEqual((await motionSnapshot()).position, frozenMotion.position, 'pause must also freeze root translation');
+  await page.locator('#toggle-follow').click(); await waitTracking();
+  await page.locator('#recenter-motion').click(); await page.waitForTimeout(400);
+  assert.ok(Math.abs((await motionSnapshot()).position[0]) < 0.015, 'recenter establishes a new image reference at current position');
+  await page.locator('#foot-lock').check();
+  report.scenarios.push('optional image summary drives bounded root translation through relay; pause freezes root; recenter recalibrates without restarting phone capture');
+  await page.screenshot({ path: fileURLToPath(new URL('full-body-motion.png', artifacts)), fullPage: true });
+  const footerPage = await browser.newPage({ viewport: { width: 390, height: 844 }, ignoreHTTPSErrors: insecure });
+  await footerPage.route('https://github.com/ehuishou/robot-mimic-studio', route => route.fulfill({ contentType: 'text/html', body: '<title>Repository link target</title>' }));
+  for (const path of ['/', '/pose.html', '/mapping.html']) {
+    await footerPage.goto(base + path);
+    const link = footerPage.locator('footer .repository-link');
+    await link.scrollIntoViewIfNeeded(); await link.waitFor({ state: 'visible' });
+    assert.equal(await link.count(), 1);
+    assert.equal(await link.getAttribute('href'), 'https://github.com/ehuishou/robot-mimic-studio');
+    assert.equal(await link.getAttribute('target'), '_blank');
+    assert.match(await link.getAttribute('rel'), /noopener/);
+    assert.equal(await link.locator('svg').count(), 1);
+    assert.equal(await footerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'footer must not cause mobile overflow');
+  }
+  // Intercept the external response; test the actual popup target without requiring access to a private repository.
+  await footerPage.context().route('https://github.com/ehuishou/robot-mimic-studio', route => route.fulfill({ contentType: 'text/html', body: '<title>Repository link target</title>' }));
+  const popupPromise = footerPage.waitForEvent('popup');
+  await footerPage.locator('footer .repository-link').click();
+  const popup = await popupPromise; await popup.waitForLoadState('domcontentloaded');
+  assert.equal(popup.url(), 'https://github.com/ehuishou/robot-mimic-studio');
+  await popup.close(); await footerPage.close();
+  report.scenarios.push('all three page footers show accessible GitHub icon/link without mobile overflow; clicking opens the configured repository in a new tab (external response intercepted)');
   assert.deepEqual(report.errors, []);
   console.log(JSON.stringify(report, null, 2));
+} catch (error) {
+  report.failure = String(error);
+  report.motion = await motionSnapshot().catch(() => null);
+  report.joints = await snapshot().catch(() => []);
+  console.error(JSON.stringify(report, null, 2));
+  throw error;
 } finally {
   clearInterval(timer); mobile?.close(); await browser.close();
   await writeFile(new URL('full-body-browser-results.json', artifacts), JSON.stringify(report, null, 2));

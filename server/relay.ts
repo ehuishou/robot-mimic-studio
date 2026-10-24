@@ -99,6 +99,7 @@ export function attachRelay(servers: Server[]): void {
           type: 'pose', version: PROTOCOL_VERSION, room: roomId, sessionId: message.sessionId,
           timestamp: message.timestamp, seq: message.seq,
           landmarks: message.landmarks.map(({ x, y, z, visibility }) => ({ x, y, z, visibility })),
+          ...(message.motion ? { motion: { x: message.motion.x, y: message.motion.y, scale: message.motion.scale } } : {}),
         });
       }
     });

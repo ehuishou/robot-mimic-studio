@@ -1,3 +1,4 @@
+import { repositoryLink } from '../ui/repositoryLink';
 import '../mobile/style.css';
 import './style.css';
 import * as THREE from 'three';
@@ -5,7 +6,7 @@ import { StudioScene } from '../scene/StudioScene';
 import { loadRobot, disposeObject } from '../robot/model';
 import type { RobotModel } from '../robot/model';
 import { mountCapturePanel } from '../mobile/capturePanel';
-import { fallbackMapping, resolvePath } from '../retarget/rigMapping';
+import { fallbackMapping, fallbackMotion, resolvePath } from '../retarget/rigMapping';
 import { loadRigConfig } from '../retarget/loadRigConfig';
 import { Retargeter } from '../retarget/Retargeter';
 import { toRetargetFrame } from '../retarget/poseAdapter';
@@ -26,7 +27,7 @@ el('app').innerHTML = `
     <section class="robot-panel"><div class="panel-bar"><strong>动作视窗 <small>LIVE RETARGET</small></strong><span id="mapping-fps">— FPS</span></div>
       <div id="mapping-viewport" aria-label="机器人动作映射视窗"></div>
       <div class="model-caption"><span id="rig-source">正在加载模型…</span><span id="follow-status" role="status">准备中</span></div>
-      <div class="follow-actions"><button id="toggle-follow" disabled>暂停跟随</button><button id="reset-mapping" disabled>重置姿势</button><button id="front-view">正面视角</button><button id="show-rig" aria-pressed="false">骨架与方向</button></div>
+      <div class="follow-actions"><button id="toggle-follow" disabled>暂停跟随</button><button id="reset-mapping" disabled>重置姿势</button><button id="recenter-motion" disabled>重新定位</button><label><input id="foot-lock" type="checkbox" checked> 脚底锁定</label><button id="front-view">正面视角</button><button id="show-rig" aria-pressed="false">骨架与方向</button></div>
       <p class="mapping-help">显示骨架时，绿色箭头为输入方向，灰色箭头为实际骨骼方向。暂停可保持姿态；重置后点击继续跟随。</p>
       <p id="mapping-error" class="error" role="alert" hidden></p><p id="mapping-warning" class="mapping-notice" role="status"></p>
     </section>
@@ -40,9 +41,10 @@ el('app').innerHTML = `
   </div>
   <section class="debug-section"><details open><summary>映射观察 <small>方向 · 置信度 · 四元数 xyzw</small></summary><div id="mapping-debug" class="debug-grid"></div></details>
     <details><summary>实际模型骨架 <small id="rig-count"></small></summary><pre id="rig-tree"></pre></details>
-    <p class="mapping-help">世界坐标用于相对方向。当前按骨骼参考方向映射躯干、头颈、双臂、双腿及末端，并限制摆角。支持本机摄像头与手机配对；当前不包含手指、轴向扭转、根位移或脚底锁定。</p>
+    <p id="motion-status" role="status" class="mapping-help"></p>
+    <p class="mapping-help">世界坐标用于相对方向。当前按骨骼参考方向映射躯干、头颈、双臂、双腿及末端，并限制摆角。支持本机摄像头与手机配对；支持骨盆完整转身、胸腰扭转、四肢轴向旋转、近似人物位移及脚底 IK 锁定，不映射手指。固定摄像头、全身入镜并站稳片刻；更换焦段或移动摄像头后点击“重新定位”。抬脚、转向或识别丢失时自动解除脚锁。</p>
   </section>
-</main><footer class="mapping-footer"><span>ROBOT STUDIO / MOTION LAB</span><span>STAGE 03</span></footer>`;
+</main><footer class="mapping-footer"><span>ROBOT STUDIO / MOTION LAB</span><div class="footer-links"><span>STAGE 03</span>${repositoryLink()}</div></footer>`;
 
 const lifetime = new AbortController();
 let scene: StudioScene | undefined, model: RobotModel | undefined, retargeter: Retargeter | undefined;
@@ -57,9 +59,9 @@ const refreshFollow = () => {
   el('toggle-follow').setAttribute('aria-pressed', String(paused));
   el('follow-status').textContent = retargeter && !retargeter.debug().length ? '映射未绑定' : paused ? '已暂停' : source === 'simulation' ? '模拟跟随' : source === 'remote' ? '手机输入' : '摄像头跟随';
 };
-const clearInput = () => { latest = undefined; retargeter?.clearInput(); };
+const clearInput = (preserveMotion = false) => { latest = undefined; retargeter?.clearInput(preserveMotion); };
 const capture = mountCapturePanel(el('capture-panel'), {
-  onStart: clearInput, onStop: clearInput,
+  onStart: () => clearInput(), onStop: () => clearInput(),
   onFrame: (frame, nowMs, seq) => {
     if (source !== 'camera' || disposed) return;
     latest = toRetargetFrame(frame, nowMs, seq); retargeter?.accept(latest, nowMs);
@@ -124,10 +126,12 @@ el<HTMLButtonElement>('copy-link').addEventListener('click', async () => {
 }, { signal });
 el('toggle-follow').addEventListener('click', () => {
   paused = !paused;
-  remotePoses.discardPending(); clearInput();
+  remotePoses.discardPending(); clearInput(true);
   retargeter?.setPaused(paused); refreshFollow();
 }, { signal });
 el('reset-mapping').addEventListener('click', () => { remotePoses.discardPending(); retargeter?.reset(); latest = undefined; paused = true; refreshFollow(); }, { signal });
+el('recenter-motion').addEventListener('click', () => retargeter?.recenter(), { signal });
+el('foot-lock').addEventListener('change', () => retargeter?.setFootLock(el<HTMLInputElement>('foot-lock').checked), { signal });
 el('front-view').addEventListener('click', () => scene?.resetCamera('front'), { signal });
 el('show-rig').addEventListener('click', () => {
   const button = el('show-rig'), enabled = button.getAttribute('aria-pressed') !== 'true';
@@ -143,11 +147,11 @@ async function initialize(): Promise<void> {
     model = await loadRobot(signal);
     if (disposed) { disposeObject(model.root); return; }
     scene.addModel(model.root); scene.resetCamera('front');
-    const rigConfig = model.source === 'fallback' ? { bindings: fallbackMapping(model.root, model.bones), notice: '' } : await loadRigConfig(signal);
+    const rigConfig = model.source === 'fallback' ? { bindings: fallbackMapping(model.root, model.bones), motion: fallbackMotion(model.root, model.bones), notice: '' } : await loadRigConfig(signal);
     if (disposed) return;
     const configs = rigConfig.bindings;
     const activeConfigs = configs.filter(c => c.enabled !== false);
-    retargeter = new Retargeter(model.root, model.bones, configs);
+    retargeter = new Retargeter(model.root, model.bones, configs, rigConfig.motion);
     el('rig-source').textContent = model.source === 'fallback' ? '内置机器人 · 17 根骨骼' : 'robot.glb · 实际骨架';
     el('mapping-warning').textContent = [model.source === 'fallback' ? '当前使用内置程序化骨架；真实 GLB 的映射与验收待模型加入后完成。' : rigConfig.notice || '已读取 GLB 骨架及专属映射配置。', ...retargeter.warnings].join(' ');
     el('rig-count').textContent = `${model.bones.length} BONES`;
@@ -178,13 +182,18 @@ async function initialize(): Promise<void> {
       } else if (source === 'remote' && !paused) {
         const pose = remotePoses.take();
         if (pose) {
-          latest = toRetargetFrame({ normalizedLandmarks: [], worldLandmarks: [...pose.landmarks] }, pose.timestampMs, pose.seq);
+          latest = { coordinateSpace: 'mediapipe-world', worldLandmarks: pose.landmarks, timestampMs: pose.timestampMs, seq: pose.seq, motion: pose.motion };
           retargeter!.accept(latest, nowMs);
         }
       }
       retargeter!.update(nowMs, dt);
       if (nowMs - sampledAt < 150) return;
       sampledAt = nowMs;
+      const motion = retargeter!.motionDebug();
+      el('motion-status').dataset.motion = JSON.stringify(motion ?? null);
+      el('motion-status').textContent = motion ? '转身 ' + motion.yawDegrees.toFixed(0) + '° · 位移 ' + motion.position.map(n => n.toFixed(2)).join(' / ')
+        + ' · ' + (motion.calibrated ? '位置已校准' : '等待画面位置观测') + ' · ' + motion.feet.map(f => (f.side === 'left' ? '左脚' : '右脚') + (f.locked ? '锁定' : '自由')).join(' / ')
+        : '当前模型未启用完整动作扩展，仅使用方向映射。';
       const debug = retargeter!.debug();
       if (retargeter!.warnings.length) el('mapping-warning').textContent = [rigConfig.notice || model!.notice, ...retargeter!.warnings].filter(Boolean).join(' ');
       renderDebug(el('mapping-debug'), debug, latest);
@@ -199,6 +208,8 @@ async function initialize(): Promise<void> {
         arrow.actual.setDirection(direction.copy(arrow.reference).applyQuaternion(quaternion).normalize());
       }
     });
+    el<HTMLButtonElement>('recenter-motion').disabled = !retargeter.motionDebug();
+    el<HTMLInputElement>('foot-lock').disabled = !retargeter.motionDebug();
     el<HTMLButtonElement>('toggle-follow').disabled = !retargeter.debug().length;
     el<HTMLButtonElement>('reset-mapping').disabled = !model.bones.length;
     el('app').dataset.ready = 'true'; refreshFollow();

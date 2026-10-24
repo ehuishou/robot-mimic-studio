@@ -100,6 +100,10 @@ test('authenticates peers and relays poses only inside the room', async t => {
   const received = nextMessageOf(viewer, 'pose');
   mobile.send(JSON.stringify(pose(first.room)));
   assert.deepEqual(await received, pose(first.room));
+  const moving = { ...pose(first.room, 2), motion: { x: 0.55, y: 0.6, scale: 0.25 } };
+  const moved = nextMessageOf(viewer, 'pose');
+  mobile.send(JSON.stringify(moving));
+  assert.deepEqual(await moved, moving, 'relay preserves validated image motion alongside landmarks');
   const unrelated = Promise.race([nextMessageOf(otherViewer, 'pose').then(() => true), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 100))]);
   assert.equal(await unrelated, false);
 });

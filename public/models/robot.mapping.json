@@ -474,5 +474,13 @@
         1
       ]
     }
-  ]
+  ],
+  "motion": {
+    "version": 1,
+    "hipsPath": [
+      0,
+      0
+    ],
+    "expectedHipsName": "Hips"
+  }
 }

@@ -1,3 +1,4 @@
+import type { ImageMotion } from '../retarget/types';
 import type { PosePoint } from '../pose/poseTypes';
 import type { PoseMessage } from './protocol';
 
@@ -5,6 +6,7 @@ export interface AcceptedRemotePose {
   landmarks: readonly PosePoint[];
   timestampMs: number;
   seq: number;
+  motion?: ImageMotion;
 }
 
 export class RemotePoseBuffer {
@@ -31,7 +33,7 @@ export class RemotePoseBuffer {
     if (message.sessionId !== this.activeSession || message.seq <= this.lastSeq || message.timestamp <= this.lastTimestamp) return false;
     this.lastSeq = message.seq;
     this.lastTimestamp = message.timestamp;
-    this.latest = { landmarks: message.landmarks, timestampMs: receivedAt, seq: ++this.localSeq };
+    this.latest = { landmarks: message.landmarks, timestampMs: receivedAt, seq: ++this.localSeq, motion: message.motion };
     return true;
   }
 

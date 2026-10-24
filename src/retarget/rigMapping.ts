@@ -1,6 +1,6 @@
 ﻿import * as THREE from 'three';
 import type { BoneEntry } from '../robot/bones';
-import type { BodySegment, RigBindingConfig } from './types';
+import type { BodySegment, RigBindingConfig, MotionRigConfig } from './types';
 import { sourceFor } from './sourceMapping';
 
 export function objectPath(root: THREE.Object3D, child: THREE.Object3D): number[] | undefined {
@@ -67,4 +67,11 @@ export function supportedChain(node: THREE.Object3D | null): boolean {
       || Math.abs(x.dot(y)) > a * a * 1e-5 || Math.abs(x.dot(z)) > a * a * 1e-5 || Math.abs(y.dot(z)) > a * a * 1e-5) return false;
   }
   return true;
+}
+
+/** Only call for the authored fallback, never an unknown imported GLB. */
+export function fallbackMotion(root: THREE.Object3D, bones: readonly BoneEntry[]): MotionRigConfig | undefined {
+  const matches = bones.filter(b => b.name === 'Hips');
+  const hipsPath = matches.length === 1 ? objectPath(root, matches[0]!.bone) : undefined;
+  return hipsPath ? { version: 1, hipsPath, expectedHipsName: 'Hips' } : undefined;
 }

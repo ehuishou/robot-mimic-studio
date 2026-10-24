@@ -3,7 +3,7 @@ import type { RetargetFrame } from './types';
 
 export const SIMULATIONS = {
   neutral: '中立姿态', left: '只抬左臂', right: '只抬右臂', both: '双臂外展', forward: '双臂前伸',
-  full: '全身动作', walk: '迈步动作', loss: '左侧低置信度', missing: '关键点缺失', invalid: '异常坐标', antipode: '向上限位',
+  full: '全身动作', walk: '迈步动作', turn: '连续转身', twist: '胸腰扭转', travel: '人物位移', plant: '站立锁脚', loss: '左侧低置信度', missing: '关键点缺失', invalid: '异常坐标', antipode: '向上限位',
 } as const;
 export type Simulation = keyof typeof SIMULATIONS;
 
@@ -13,6 +13,8 @@ export function simulatedPose(mode: Simulation, timestampMs: number, seq: number
   const point = (x: number, y: number, z: number, visibility = 1): PosePoint => ({ x, y, z, visibility });
   // MediaPipe world coordinates: x-right, y-down, z-away. Keep mapped landmarks visible in the normal fixtures.
   points[0] = point(0, -0.92, 0);
+  points[2] = point(0.04, -0.88, -0.05); points[5] = point(-0.04, -0.88, -0.05);
+  points[9] = point(0.025, -0.8, -0.05); points[10] = point(-0.025, -0.8, -0.05);
   points[11] = point(0.2, -0.4, 0); points[12] = point(-0.2, -0.4, 0);
   points[13] = point(0.228, -0.08, 0); points[14] = point(-0.228, -0.08, 0);
   points[15] = point(0.228, 0.24, 0); points[16] = point(-0.228, 0.24, 0);
@@ -55,6 +57,18 @@ export function simulatedPose(mode: Simulation, timestampMs: number, seq: number
       points[26] = point(-0.18, 0.9, 0.03); points[28] = point(-0.12, 1.36, 0.18); points[32] = point(-0.08, 1.42, -0.02);
     }
   }
+  const phase = timestampMs / 1000;
+  if (mode === 'turn' || mode === 'twist') {
+    const angle = mode === 'turn' ? phase * Math.PI / 4 : Math.sin(phase) * 0.8;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    for (const [index, p] of points.entries()) {
+      if (mode === 'twist' && index >= 23) continue;
+      const x = p.x;
+      p.x = cos * x - sin * p.z; p.z = sin * x + cos * p.z;
+    }
+  }
+  const motion = mode === 'travel' ? { x: 0.5 + Math.sin(phase * 0.6) * 0.08, y: 0.6, scale: 0.25 + Math.sin(phase * 0.35) * 0.015 }
+    : mode === 'plant' ? { x: 0.5 + Math.sin(phase) * 0.003, y: 0.6, scale: 0.25 } : undefined;
   if (mode === 'invalid') points[13] = point(NaN, Infinity, 0);
-  return { timestampMs, seq, coordinateSpace: 'mediapipe-world', worldLandmarks: mode === 'missing' ? [] : points };
+  return { timestampMs, seq, coordinateSpace: 'mediapipe-world', motion, worldLandmarks: mode === 'missing' ? [] : points };
 }

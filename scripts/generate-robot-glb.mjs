@@ -259,7 +259,7 @@ function makeMapping(gltf) {
     add(label + 'LowerLeg', side, 'lowerLeg', [25 + i], [27 + i], label + 'Foot', undefined, 145);
     add(label + 'Foot', side, 'foot', [27 + i], [31 + i], undefined, [0, 0, 1], 85);
   }
-  return { version: 2, asset: 'robot.glb', generatedBy: 'scripts/generate-robot-glb.mjs', bindings };
+  return { version: 2, asset: 'robot.glb', generatedBy: 'scripts/generate-robot-glb.mjs', motion: { version: 1, hipsPath: findNodePath(gltf, 'Hips'), expectedHipsName: 'Hips' }, bindings };
 }
 
 await mkdir(modelsDirectory, { recursive: true });

@@ -1,3 +1,4 @@
+import { repositoryLink } from './repositoryLink';
 import { icon } from './icons';
 
 export function renderLayout(container: HTMLElement): void {
@@ -32,5 +33,5 @@ export function renderLayout(container: HTMLElement): void {
         <div class="inspector-footer">${icon('code')}<span>Built with Three.js</span><span class="footer-dot"></span><span>本地渲染</span></div>
       </aside>
     </main>
-    <footer class="page-footer"><span>ROBOT STUDIO<span class="footer-slash">/</span>让每一个关节，都有无限可能。</span><span>MODEL WORKSPACE<span class="footer-status"><i></i> 本地处理</span></span></footer>`;
+    <footer class="page-footer"><span>ROBOT STUDIO<span class="footer-slash">/</span>让每一个关节，都有无限可能。</span><div class="footer-links"><span>MODEL WORKSPACE<span class="footer-status"><i></i> 本地处理</span></span>${repositoryLink()}</div></footer>`;
 }

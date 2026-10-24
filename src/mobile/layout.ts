@@ -1,3 +1,4 @@
+import { repositoryLink } from '../ui/repositoryLink';
 export function renderMobileLayout(container: HTMLElement, embedded = false): void {
   container.innerHTML = `
     <header class="topbar"><a class="brand" href="./">robot<span>studio</span><b>.</b></a><a class="back-link" href="./mapping.html">动作映射 ↗</a><a class="back-link" href="./">模型工作台 <span>↗</span></a></header>
@@ -25,7 +26,7 @@ export function renderMobileLayout(container: HTMLElement, embedded = false): vo
       <p class="load-status" id="load-status" role="status" aria-live="polite">默认使用后置摄像头，点击启动后请允许摄像头权限。</p>
       <p class="load-status relay-status" id="relay-status" role="status" aria-live="polite" hidden></p>
       <section class="tips"><div class="tips-heading"><span>获得更好的识别效果</span><small>CAPTURE NOTES</small></div><div class="tip"><b>01</b><p>全身尽量入镜<span>调整距离或变焦，让头部与四肢完整可见。</span></p></div><div class="tip"><b>02</b><p>在光线充足的地方<span>面向光源，避免强烈背光和遮挡。</span></p></div><div class="privacy"><span>⌁</span><p>画面留在你的设备上<small>本地处理 · 不上传视频 · 不录制画面</small></p><span class="privacy-dot"></span></div></section>
-    </main><footer><span>ROBOT STUDIO / MOTION LAB</span><span>STAGE 02</span></footer>`;
+    </main><footer><span>ROBOT STUDIO / MOTION LAB</span><div class="footer-links"><span>STAGE 02</span>${repositoryLink()}</div></footer>`;
   if (embedded) {
     container.querySelectorAll('header, .heading, .tips, footer').forEach(node => node.remove());
     const main = container.querySelector('main')!;

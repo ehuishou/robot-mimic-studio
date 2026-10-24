@@ -1,3 +1,4 @@
+import { imageMotion } from '../retarget/poseAdapter';
 import type { PoseFrame } from '../pose/poseTypes';
 import { COMMUNICATION_CONFIG } from './config';
 import { normalizePoseLandmarks, type CaptureMessage, type HelloMessage, type RelayMessage } from './protocol';
@@ -113,7 +114,8 @@ export function createPoseClient(
       if (!sessionId || captureState !== 'started') return false;
       const landmarks = normalizePoseLandmarks(frame.worldLandmarks);
       if (!landmarks) return false;
-      return send({ type: 'pose', version: hello.version, room: hello.room, sessionId, timestamp, seq, landmarks });
+      const motion = imageMotion(frame);
+      return send({ type: 'pose', version: hello.version, room: hello.room, sessionId, timestamp, seq, landmarks, ...(motion ? { motion } : {}) });
     },
     setCapture(state: CaptureMessage['state'], id: string) {
       sessionId = id;

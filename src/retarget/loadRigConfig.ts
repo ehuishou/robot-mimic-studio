@@ -1,4 +1,4 @@
-import type { BodySegment, RigBindingConfig } from './types';
+import type { BodySegment, RigBindingConfig, MotionRigConfig } from './types';
 import { sourceFor } from './sourceMapping';
 
 const segmentSet = new Set<BodySegment>(['torso', 'neck', 'upperArm', 'forearm', 'hand', 'upperLeg', 'lowerLeg', 'foot']);
@@ -44,11 +44,24 @@ export function parseRigConfig(value: unknown): RigBindingConfig[] {
   });
 }
 
-export async function loadRigConfig(signal: AbortSignal): Promise<{ bindings: RigBindingConfig[]; notice: string }> {
+export function parseMotionConfig(value: unknown): MotionRigConfig | undefined {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object') throw new Error('完整动作配置无效');
+  const m = value as Record<string, unknown>;
+  if (m.version !== 1 || !Array.isArray(m.hipsPath) || !m.hipsPath.length || m.hipsPath.length > 64
+    || !m.hipsPath.every(i => Number.isSafeInteger(i) && i >= 0)
+    || typeof m.expectedHipsName !== 'string' || !m.expectedHipsName.trim()) throw new Error('完整动作骨盆路径无效');
+  return { version: 1, hipsPath: [...m.hipsPath], expectedHipsName: m.expectedHipsName };
+}
+
+export async function loadRigConfig(signal: AbortSignal): Promise<{ bindings: RigBindingConfig[]; notice: string; motion?: MotionRigConfig }> {
   try {
     const response = await fetch(`${import.meta.env.BASE_URL}models/robot.mapping.json`, { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
     if (!response.ok) throw new Error('请在 models/robot.mapping.json 提供此 GLB 的专属映射配置。');
-    return { bindings: parseRigConfig(await response.json()), notice: '' };
+    const value = await response.json();
+    const bindings = parseRigConfig(value);
+    try { return { bindings, motion: parseMotionConfig(value.motion), notice: '' }; }
+    catch (error) { return { bindings, notice: String(error) }; }
   } catch (error) {
     signal.throwIfAborted();
     return { bindings: [], notice: error instanceof Error ? error.message : '无法读取模型映射配置。' };

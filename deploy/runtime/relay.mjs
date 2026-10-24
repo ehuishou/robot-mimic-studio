@@ -22,10 +22,15 @@ function isPingMessage(value) {
   const message = value;
   return hasExactKeys(value, ["type", "version", "nonce"]) && message.type === "ping" && message.version === PROTOCOL_VERSION && Number.isSafeInteger(message.nonce);
 }
+function isImageMotion(value) {
+  if (!value || typeof value !== "object") return false;
+  const m = value;
+  return hasExactKeys(value, ["x", "y", "scale"]) && [m.x, m.y, m.scale].every(Number.isFinite) && m.x >= 0 && m.x <= 1 && m.y >= 0 && m.y <= 1 && m.scale >= 0.04 && m.scale <= 0.8;
+}
 function isPoseMessage(value, room) {
   if (!value || typeof value !== "object") return false;
   const frame = value;
-  return hasExactKeys(value, ["type", "version", "room", "sessionId", "timestamp", "seq", "landmarks"]) && frame.type === "pose" && frame.version === PROTOCOL_VERSION && typeof frame.room === "string" && (!room || frame.room === room) && typeof frame.sessionId === "string" && SESSION_ID_PATTERN.test(frame.sessionId) && Number.isFinite(frame.timestamp) && Number.isSafeInteger(frame.seq) && frame.seq >= 0 && Array.isArray(frame.landmarks) && frame.landmarks.length === LANDMARK_COUNT && frame.landmarks.every((point) => !!point && hasExactKeys(point, ["x", "y", "z", "visibility"]) && [point.x, point.y, point.z, point.visibility].every(Number.isFinite) && Math.abs(point.x) <= MAX_COORDINATE && Math.abs(point.y) <= MAX_COORDINATE && Math.abs(point.z) <= MAX_COORDINATE && point.visibility >= 0 && point.visibility <= 1);
+  return hasExactKeys(value, ["type", "version", "room", "sessionId", "timestamp", "seq", "landmarks", ...Object.hasOwn(value, "motion") ? ["motion"] : []]) && (!Object.hasOwn(value, "motion") || isImageMotion(frame.motion)) && frame.type === "pose" && frame.version === PROTOCOL_VERSION && typeof frame.room === "string" && (!room || frame.room === room) && typeof frame.sessionId === "string" && SESSION_ID_PATTERN.test(frame.sessionId) && Number.isFinite(frame.timestamp) && Number.isSafeInteger(frame.seq) && frame.seq >= 0 && Array.isArray(frame.landmarks) && frame.landmarks.length === LANDMARK_COUNT && frame.landmarks.every((point) => !!point && hasExactKeys(point, ["x", "y", "z", "visibility"]) && [point.x, point.y, point.z, point.visibility].every(Number.isFinite) && Math.abs(point.x) <= MAX_COORDINATE && Math.abs(point.y) <= MAX_COORDINATE && Math.abs(point.z) <= MAX_COORDINATE && point.visibility >= 0 && point.visibility <= 1);
 }
 function isHelloMessage(value) {
   if (!value || typeof value !== "object") return false;
@@ -167,7 +172,8 @@ function attachRelay(servers) {
           sessionId: message.sessionId,
           timestamp: message.timestamp,
           seq: message.seq,
-          landmarks: message.landmarks.map(({ x, y, z, visibility }) => ({ x, y, z, visibility }))
+          landmarks: message.landmarks.map(({ x, y, z, visibility }) => ({ x, y, z, visibility })),
+          ...message.motion ? { motion: { x: message.motion.x, y: message.motion.y, scale: message.motion.scale } } : {}
         });
       }
     });
