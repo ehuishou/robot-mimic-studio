@@ -1,6 +1,6 @@
 import type { PoseFrame } from '../pose/poseTypes';
 import { COMMUNICATION_CONFIG } from './config';
-import type { CaptureMessage, HelloMessage, RelayMessage } from './protocol';
+import { normalizePoseLandmarks, type CaptureMessage, type HelloMessage, type RelayMessage } from './protocol';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 export interface PoseClientEvents {
@@ -111,7 +111,9 @@ export function createPoseClient(
   return {
     sendPose(frame: PoseFrame, timestamp: number, seq: number) {
       if (!sessionId || captureState !== 'started') return false;
-      return send({ type: 'pose', version: hello.version, room: hello.room, sessionId, timestamp, seq, landmarks: frame.worldLandmarks });
+      const landmarks = normalizePoseLandmarks(frame.worldLandmarks);
+      if (!landmarks) return false;
+      return send({ type: 'pose', version: hello.version, room: hello.room, sessionId, timestamp, seq, landmarks });
     },
     setCapture(state: CaptureMessage['state'], id: string) {
       sessionId = id;

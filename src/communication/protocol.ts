@@ -49,6 +49,23 @@ export function isPingMessage(value: unknown): value is PingMessage {
     && message.type === 'ping' && message.version === PROTOCOL_VERSION && Number.isSafeInteger(message.nonce);
 }
 
+/** Convert MediaPipe output into the strict relay payload. Missing detections are skipped,
+ * optional vendor fields such as `presence` are never sent, and absent confidence becomes invisible. */
+export function normalizePoseLandmarks(points: readonly unknown[]): PosePoint[] | undefined {
+  if (points.length !== LANDMARK_COUNT) return undefined;
+  const normalized: PosePoint[] = [];
+  for (const value of points) {
+    if (!value || typeof value !== 'object') return undefined;
+    const point = value as Record<string, unknown>;
+    const { x, y, z } = point;
+    if (![x, y, z].every(Number.isFinite)
+      || Math.abs(x as number) > MAX_COORDINATE || Math.abs(y as number) > MAX_COORDINATE
+      || Math.abs(z as number) > MAX_COORDINATE) return undefined;
+    const visibility = typeof point.visibility === 'number' && Number.isFinite(point.visibility) && point.visibility >= 0 && point.visibility <= 1 ? point.visibility : 0;
+    normalized.push({ x: x as number, y: y as number, z: z as number, visibility });
+  }
+  return normalized;
+}
 export function isPoseMessage(value: unknown, room?: string): value is PoseMessage {
   if (!value || typeof value !== 'object') return false;
   const frame = value as Partial<PoseMessage>;
