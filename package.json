@@ -12,6 +12,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node scripts/verify-browser.mjs",
     "prepare:pose": "node scripts/prepare-pose-assets.mjs",
+    "generate:model": "node scripts/generate-robot-glb.mjs",
     "test:pose": "node scripts/verify-pose-browser.mjs",
     "test:retarget": "node scripts/verify-retarget-browser.mjs"
   },

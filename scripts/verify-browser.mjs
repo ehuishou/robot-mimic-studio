@@ -76,6 +76,18 @@ try {
   assert.equal(await page.locator('#bone-count').textContent(), '17');
   assert.match(await page.locator('#model-notice').textContent(), /有效的 GLB/);
   results.push('invalid model: warning and functional fallback');
+  await page.unroute('**/models/robot.glb');
+  await page.reload(); await ready();
+  assert.equal(await page.locator('#source-badge').textContent(), 'GLB 模型');
+  assert.equal(await page.locator('#bone-count').textContent(), '17');
+  assert.equal(await page.locator('#file-detail').textContent(), 'public/models/robot.glb');
+  const importedBefore = await page.locator('#viewport canvas').screenshot();
+  await page.getByRole('button', { name: 'LeftUpperArm', exact: true }).click();
+  await page.locator('#rotation-z').evaluate((input) => { input.value = '45'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.ok(!importedBefore.equals(await page.locator('#viewport canvas').screenshot()), 'imported GLB skin responds to bone rotation');
+  await page.locator('#reset-pose').click();
+  results.push('delivery robot.glb: imported 17-joint skinned model renders and responds to bone controls');
   await page.locator('#viewport canvas').dispatchEvent('webglcontextlost');
   assert.match(await page.locator('#scene-error').textContent(), /图形上下文已丢失/);
   results.push('WebGL context loss: recovery message');

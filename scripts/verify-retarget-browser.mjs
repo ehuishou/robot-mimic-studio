@@ -50,6 +50,9 @@ try {
   await page.goto(`${base}/mapping.html`);
   await page.waitForFunction(() => document.getElementById('app').dataset.ready === 'true');
   assert.equal(await page.locator('#mapping-viewport canvas').count(), 1);
+  assert.equal(await page.locator('#rig-source').textContent(), 'robot.glb · 实际骨架');
+  assert.equal(await page.locator('.arm-debug').count(), 2);
+  assert.match(await page.locator('#mapping-warning').textContent(), /已读取 GLB 骨架及专属映射配置/);
   assert.match(await page.locator('#rig-tree').textContent(), /LeftUpperArm.*Chest/);
   assert.equal(await page.evaluate(() => window.__constraints.length), 0);
   await page.locator('#simulation').selectOption('left'); await stable('left');
@@ -112,6 +115,9 @@ try {
   await page.locator('#input-source').selectOption('simulation'); await stopped();
   assert.equal(await page.locator('#camera-zoom').isDisabled(), true);
   assert.equal(await page.locator('#mapping-viewport canvas').count(), 1);
+  assert.equal(await page.locator('#rig-source').textContent(), 'robot.glb · 实际骨架');
+  assert.equal(await page.locator('.arm-debug').count(), 2);
+  assert.match(await page.locator('#mapping-warning').textContent(), /已读取 GLB 骨架及专属映射配置/);
   assert.equal(modelRequests, 1);
   report.scenarios.push('integrated rear-camera, native zoom, front-camera switching, input-source stop and single robot load');
   // Returning through navigation must not leave tracks behind, including a session starting during exit.
