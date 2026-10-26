@@ -5,7 +5,7 @@
 
 展示地址：[打开 Robot Studio](https://121.199.30.133/) · [手机姿态识别](https://121.199.30.133/pose.html) · [机器人动作映射](https://121.199.30.133/mapping.html)
 
-GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（私有仓库）。工作台、姿态识别、动作映射三个页面底部均有 GitHub 图标，点击在新标签页打开该仓库；访问内容需要对应 GitHub 权限。
+GitHub：[ehuishou/robot-mimic-studio](https://github.com/ehuishou/robot-mimic-studio)（公开仓库，无需登录即可浏览）。工作台、姿态识别、动作映射三个页面底部均有 GitHub 图标，点击在新标签页打开该仓库。
 
 实际验收记录：[第一阶段](docs/verification-2026-10-23.md) · [第二阶段](docs/stage-02-verification.md) · [第三阶段](docs/stage-03-verification.md) · [第五阶段](docs/stage-05-plan.md)
 
