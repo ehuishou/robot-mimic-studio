@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { disposeObject } from '../robot/model';
+import { createStudioEnvironment } from './studioEnvironment';
 
 export class StudioScene {
   readonly scene = new THREE.Scene();
@@ -9,6 +10,7 @@ export class StudioScene {
   readonly controls: OrbitControls;
   private readonly observer: ResizeObserver;
   private readonly grid: THREE.GridHelper;
+  private readonly environmentTarget: THREE.WebGLRenderTarget;
   private skeleton?: THREE.SkeletonHelper;
   private readonly selection = new THREE.AxesHelper(0.28);
   private frame = 0;
@@ -30,14 +32,15 @@ export class StudioScene {
     private readonly onFps: (fps: number) => void,
     private readonly onError: (message: string) => void,
   ) {
-    this.scene.background = new THREE.Color('#141a18');
-    this.scene.fog = new THREE.Fog('#141a18', 8, 18);
+    this.scene.background = new THREE.Color('#30363c');
+    this.scene.fog = new THREE.Fog('#30363c', 8, 24);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.35;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.domElement.setAttribute('aria-label', '三维机器人视窗，可拖动旋转、滚轮缩放');
     this.container.append(this.renderer.domElement);
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
@@ -50,46 +53,12 @@ export class StudioScene {
     this.controls.autoRotateSpeed = 0.65;
     this.resetCamera();
 
-    this.scene.add(new THREE.HemisphereLight('#ebf5e4', '#525a50', 2.4));
-    const key = new THREE.DirectionalLight('#fff5e3', 4);
-    key.position.set(3, 7, 5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.left = -4;
-    key.shadow.camera.right = 4;
-    key.shadow.camera.top = 5;
-    key.shadow.camera.bottom = -3;
-    key.shadow.normalBias = 0.035;
-    this.scene.add(key);
-    const rim = new THREE.DirectionalLight('#c4edab', 3);
-    rim.position.set(-4, 3, -3);
-    this.scene.add(rim);
-
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: '#151b18', roughness: 0.95 }),
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.07;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-    const platform = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.48, 1.5, 0.055, 96),
-      new THREE.MeshStandardMaterial({ color: '#29312b', roughness: 0.7, metalness: 0.2 }),
-    );
-    platform.position.y = -0.035;
-    platform.receiveShadow = true;
-    this.scene.add(platform);
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(1.47, 1.482, 96),
-      new THREE.MeshBasicMaterial({ color: '#819d68', side: THREE.DoubleSide, transparent: true, opacity: 0.6 }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = -0.003;
-    this.scene.add(ring);
-    this.grid = new THREE.GridHelper(20, 40, '#364036', '#242d26');
-    this.grid.position.y = -0.038;
-    this.scene.add(this.grid);
+    const studio = createStudioEnvironment(this.renderer);
+    this.environmentTarget = studio.environment;
+    this.scene.environment = this.environmentTarget.texture;
+    this.scene.environmentIntensity = 0.8;
+    this.scene.add(studio.root);
+    this.grid = studio.grid;
     this.selection.visible = false;
     this.selection.renderOrder = 10;
     const selectionMaterial = this.selection.material as THREE.LineBasicMaterial;
@@ -173,7 +142,10 @@ export class StudioScene {
     this.skeleton?.removeFromParent();
     this.scene.traverse((object) => {
       if (object instanceof THREE.DirectionalLight) object.shadow.dispose();
+      if (object instanceof THREE.InstancedMesh) object.dispose();
     });
+    this.scene.environment = null;
+    this.environmentTarget.dispose();
     disposeObject(this.scene);
     this.scene.clear();
     this.renderer.dispose();
